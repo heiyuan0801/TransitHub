@@ -107,11 +107,11 @@ The project is built as a Go backend with a Vue 3 admin frontend, backed by Post
 Production compose files live under `deploy/`.
 
 ```bash
-git clone https://github.com/deviseo/transit-hub.git transit-hub
+git clone https://github.com/heiyuan0801/TransitHub.git transit-hub
 cd transit-hub
 
 # Edit deploy/docker-compose.prod.yml first:
-# - image tag (defaults to deviseo/transithub:v0.1.9)
+# - image tag (defaults to ghcr.io/heiyuan0801/transithub:v0.1.10)
 # - replace every change-this-* placeholder
 # - database password in both DATABASE_URL and POSTGRES_PASSWORD
 # - ADMIN_EMAIL / ADMIN_PASSWORD
@@ -164,8 +164,26 @@ This starts PostgreSQL and Redis on local ports `5432` and `6379`.
 Because the Dockerfile is stored in `deploy/` but expects the repository root as build context, build with:
 
 ```bash
-docker build -f deploy/Dockerfile -t deviseo/transithub:v0.1.9 .
+docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.10 .
 ```
+
+### Publish Docker Images
+
+Pushing a `v*` Git tag triggers GitHub Actions to build `linux/amd64` and `linux/arm64` images and publish them to GHCR:
+
+```bash
+git tag v0.1.10
+git push origin v0.1.10
+```
+
+Published images:
+
+```text
+ghcr.io/heiyuan0801/transithub:v0.1.10
+ghcr.io/heiyuan0801/transithub:latest
+```
+
+You can also publish a custom tag from **Actions > Publish Docker image > Run workflow** in the GitHub repository.
 
 ## Local Development
 

@@ -107,11 +107,11 @@ TransitHub 是一个自部署的后台运营中心，用于管理多个上游站
 生产部署文件位于 `deploy/` 目录。
 
 ```bash
-git clone https://github.com/deviseo/transit-hub.git transit-hub
+git clone https://github.com/heiyuan0801/TransitHub.git transit-hub
 cd transit-hub
 
 # 先编辑 deploy/docker-compose.prod.yml：
-# - 镜像 tag（默认使用 deviseo/transithub:v0.1.9）
+# - 镜像 tag（默认使用 ghcr.io/heiyuan0801/transithub:v0.1.10）
 # - 替换所有 change-this-* 占位值
 # - DATABASE_URL 和 POSTGRES_PASSWORD 中的数据库密码
 # - ADMIN_EMAIL / ADMIN_PASSWORD
@@ -164,8 +164,26 @@ docker compose -f deploy/docker-compose.yml up -d
 由于 Dockerfile 放在 `deploy/`，但构建上下文需要使用仓库根目录，请使用：
 
 ```bash
-docker build -f deploy/Dockerfile -t deviseo/transithub:v0.1.9 .
+docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.10 .
 ```
+
+### 发布 Docker 镜像
+
+推送 `v*` Git 标签后，GitHub Actions 会自动构建 `linux/amd64` 和 `linux/arm64` 镜像并发布到 GHCR：
+
+```bash
+git tag v0.1.10
+git push origin v0.1.10
+```
+
+发布镜像：
+
+```text
+ghcr.io/heiyuan0801/transithub:v0.1.10
+ghcr.io/heiyuan0801/transithub:latest
+```
+
+也可以在 GitHub 仓库的 **Actions > Publish Docker image > Run workflow** 中手动发布指定标签。
 
 ## 本地开发
 

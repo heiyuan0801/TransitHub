@@ -118,6 +118,7 @@ export default {
       dashboard: '仪表盘',
       leaderboard: '排行榜',
       lottery: '抽奖活动',
+      checkin: '每日签到',
       upstream: '上游管理',
       groupManagement: '分组管理',
       groupRates: '分组倍率',
@@ -164,6 +165,44 @@ export default {
         invalidSourceOrigin: '来源地址必须与当前工作区连接的 Sub2API 站点完全一致。',
         upstreamUnsupported: '当前 Sub2API 版本不支持排行榜接口或 Token 排序，请先升级。',
         unknown: '排行榜请求失败，请稍后重试。'
+      }
+    },
+    checkin: {
+      title: '每日签到',
+      subtitle: '配置 Sub2API 用户每日随机余额奖励、连续签到里程碑和安全嵌入链接。',
+      loading: '正在加载签到设置...',
+      metrics: { todayUsers: '今日签到用户', todayRewards: '今日已发余额', totalUsers: '累计签到用户', totalCheckins: '累计签到次数', totalRewards: '累计发放余额' },
+      config: { title: '奖励规则', description: '随机奖励与当天命中的连续签到奖励会合并发放。', capDescription: '单用户每日奖励上限包含随机奖励和连续签到额外奖励，超过部分不会发放。' },
+      fields: {
+        enabled: '启用签到', dailyMin: '每日最小余额', dailyMax: '每日最大余额', dailyUserRewardCap: '单用户每日奖励上限', timezone: '签到时区',
+        days: '连续天数', bonus: '额外余额', user: '用户', date: '签到日期', streak: '连续签到', reward: '发放余额', status: '状态'
+      },
+      milestones: {
+        title: '连续签到里程碑', description: '用户连续签到到指定天数时，一次性获得额外余额。',
+        empty: '暂未设置里程碑，用户只会获得每日随机余额。'
+      },
+      embed: {
+        title: '嵌入设置', description: '将链接填写到 Sub2API 自定义菜单中，系统会自动验证当前用户身份。',
+        source: '当前绑定站点', url: 'iframe 链接', confirmRotate: '重新生成后，旧的签到嵌入链接将立即失效。确定继续吗？'
+      },
+      records: {
+        title: '签到记录管理', count: '共 {count} 条', empty: '当前条件下没有签到记录。', anonymous: '匿名用户', streakDays: '连续 {count} 天',
+        userSearch: '搜索用户', userPlaceholder: '邮箱或用户 ID', dateFrom: '开始日期', dateTo: '结束日期', page: '第 {page} / {total} 页'
+      },
+      leaderboard: {
+        title: '签到天数排行榜', description: '按累计成功签到天数排序，签到天数相同时按累计奖励排序。', count: '前 {count} 名', empty: '暂无可参与排行的签到记录。',
+        rank: '排名', totalDays: '累计天数', currentStreak: '当前连续', longestStreak: '最长连续', totalRewards: '累计奖励', lastCheckin: '最近签到',
+        period: { today: '今天', '7d': '7 日', '30d': '30 日', all: '全部' }
+      },
+      status: { pending: '发放中', fulfilled: '已发放', retryable_failed: '待重试', failed: '发放失败' },
+      actions: {
+        refresh: '刷新', addMilestone: '添加里程碑', removeMilestone: '删除里程碑', save: '保存设置', saved: '已保存',
+        copy: '复制链接', copied: '已复制', rotate: '重新生成', search: '查询', reset: '重置', previous: '上一页', next: '下一页'
+      },
+      errors: {
+        network: '网络请求失败，请检查连接后重试。', request: '签到接口请求失败，请稍后重试。', unknown: '操作失败，请稍后重试。',
+        validation: '请检查金额、日期和里程碑；每日最大余额不能超过单用户上限。', copy: '复制失败，请手动选择链接。',
+        invalidSourceOrigin: '当前工作区必须连接有效的 Sub2API 站点。'
       }
     },
     lottery: {
@@ -2082,6 +2121,40 @@ export default {
         adminSession: '管理员会话不可用，请联系站点管理员重新连接工作区。',
         upstreamUnsupported: '当前 Sub2API 版本不支持排行榜，请联系管理员升级。',
         upstreamRequest: '排行榜数据暂时不可用，请稍后重试。'
+      }
+    },
+    checkin: {
+      title: '每日签到', subtitle: '每天签到领取随机余额，连续签到还可获得额外奖励。', loading: '正在加载签到状态...',
+      actions: { refresh: '刷新签到状态', checkin: '立即签到', checked: '今日已签到' },
+      today: {
+        ready: '今天可以签到', done: '今天已完成签到', range: '本次可随机获得 {min} - {max} 余额',
+        rewarded: '本次已获得 {amount} 余额', milestoneBonus: '其中包含连续签到额外奖励 {amount}'
+      },
+      streak: { label: '当前连续签到', days: '天' },
+      stats: { totalDays: '累计签到', longestStreak: '最长连续', totalRewards: '累计获得余额', rank: '签到排名', unranked: '暂无' },
+      calendar: {
+        title: '近 30 天签到记录', description: '蓝色日期表示当天签到奖励已成功发放。',
+        checkedTitle: '{date} 已签到，获得 {amount} 余额', emptyTitle: '{date} 未签到'
+      },
+      leaderboard: {
+        title: '签到天数排行榜', description: '按累计成功签到天数排名。', top: '前 10 名', empty: '还没有用户进入排行榜。',
+        rank: '排名', user: '用户', days: '天数', streak: '连续', anonymous: '匿名用户', me: '我'
+      },
+      milestone: {
+        next: '下一个连续奖励', description: '连续签到第 {days} 天，额外获得 {amount} 余额。', completed: '你已经完成了当前配置的全部连续奖励。'
+      },
+      history: {
+        title: '最近签到', count: '{count} 条', empty: '还没有签到记录，完成今天的第一次签到吧。',
+        streak: '连续 {count} 天', includesBonus: '含连续奖励'
+      },
+      errors: {
+        title: '签到加载失败', network: '网络请求失败，请检查连接后重试。', request: '签到接口请求失败，请稍后重试。',
+        missingParams: '当前页面缺少 iframe 会话参数，请从 Sub2API 自定义菜单中打开。', configNotFound: '签到嵌入配置不存在。',
+        invalidSrcHost: '来源地址无效。', srcHostMismatch: '当前来源站点与签到配置不匹配。', sub2apiAuth: '身份校验失败，请刷新页面重试。',
+        sub2apiRequest: '无法连接来源站点，请稍后重试。', userMismatch: '用户身份校验失败。', userInactive: '来源账号已停用。',
+        sessionInvalid: '会话已过期，请刷新页面重试。', adminSession: '管理员会话不可用，请联系站点管理员重新连接工作区。',
+        sourceBinding: '签到嵌入来源已变更，请联系管理员刷新签到设置。', disabled: '管理员暂未开放签到。',
+        alreadyChecked: '今天已经签到，无需重复操作。', rewardFailed: '余额发放暂时失败，请稍后重试。'
       }
     },
     lottery: {

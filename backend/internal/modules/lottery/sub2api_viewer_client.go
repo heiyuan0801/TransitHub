@@ -2,6 +2,7 @@ package lottery
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,11 @@ import (
 type sub2APIError struct {
 	unauthorized bool
 	detail       string
+}
+
+func IsViewerUnauthorized(err error) bool {
+	var subErr *sub2APIError
+	return errors.As(err, &subErr) && subErr.unauthorized
 }
 
 func (e *sub2APIError) Error() string { return e.detail }

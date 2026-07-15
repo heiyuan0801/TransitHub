@@ -118,6 +118,7 @@ export default {
       dashboard: 'Dashboard',
       leaderboard: 'Leaderboard',
       lottery: 'Lottery',
+      checkin: 'Daily Check-in',
       upstream: 'Upstream',
       groupManagement: 'Group Management',
       groupRates: 'Group Rates',
@@ -164,6 +165,44 @@ export default {
         invalidSourceOrigin: 'The source origin must exactly match the Sub2API site connected to this workspace.',
         upstreamUnsupported: 'This Sub2API version does not support the leaderboard endpoint or token sorting. Upgrade it first.',
         unknown: 'The leaderboard request failed. Try again later.'
+      }
+    },
+    checkin: {
+      title: 'Daily Check-in',
+      subtitle: 'Configure random daily balance rewards, streak milestones, and a secure Sub2API embed URL.',
+      loading: 'Loading check-in settings...',
+      metrics: { todayUsers: 'Users checked in today', todayRewards: 'Balance awarded today', totalUsers: 'All-time users', totalCheckins: 'All-time check-ins', totalRewards: 'All-time rewards' },
+      config: { title: 'Reward rules', description: 'The random reward and any streak bonus are delivered together.', capDescription: 'The per-user daily cap includes both the random reward and streak bonus. Any excess is not awarded.' },
+      fields: {
+        enabled: 'Enable check-in', dailyMin: 'Daily minimum balance', dailyMax: 'Daily maximum balance', dailyUserRewardCap: 'Per-user daily reward cap', timezone: 'Check-in timezone',
+        days: 'Streak days', bonus: 'Bonus balance', user: 'User', date: 'Check-in date', streak: 'Streak', reward: 'Balance awarded', status: 'Status'
+      },
+      milestones: {
+        title: 'Streak milestones', description: 'Award a one-time bonus when a user reaches the specified consecutive day.',
+        empty: 'No milestones are configured. Users receive only the random daily reward.'
+      },
+      embed: {
+        title: 'Embed settings', description: 'Use this URL in a Sub2API custom menu. The current user is verified automatically.',
+        source: 'Bound site', url: 'Iframe URL', confirmRotate: 'Regenerating the token immediately invalidates the previous check-in URL. Continue?'
+      },
+      records: {
+        title: 'Check-in records', count: '{count} records', empty: 'No check-in records match the current filters.', anonymous: 'Anonymous user', streakDays: '{count} day streak',
+        userSearch: 'Search user', userPlaceholder: 'Email or user ID', dateFrom: 'Start date', dateTo: 'End date', page: 'Page {page} of {total}'
+      },
+      leaderboard: {
+        title: 'Check-in Days Leaderboard', description: 'Ranks successful check-ins by total days, then by total rewards when days are tied.', count: 'Top {count}', empty: 'No successful check-ins are available for ranking.',
+        rank: 'Rank', totalDays: 'Total days', currentStreak: 'Current streak', longestStreak: 'Longest streak', totalRewards: 'Total rewards', lastCheckin: 'Last check-in',
+        period: { today: 'Today', '7d': '7 days', '30d': '30 days', all: 'All time' }
+      },
+      status: { pending: 'Delivering', fulfilled: 'Delivered', retryable_failed: 'Retry needed', failed: 'Delivery failed' },
+      actions: {
+        refresh: 'Refresh', addMilestone: 'Add milestone', removeMilestone: 'Remove milestone', save: 'Save settings', saved: 'Saved',
+        copy: 'Copy URL', copied: 'Copied', rotate: 'Regenerate', search: 'Search', reset: 'Reset', previous: 'Previous page', next: 'Next page'
+      },
+      errors: {
+        network: 'Network request failed. Check the connection and try again.', request: 'The check-in request failed. Try again later.', unknown: 'The operation failed. Try again later.',
+        validation: 'Check amounts, dates, and milestones. The daily maximum cannot exceed the per-user cap.', copy: 'Copy failed. Select the URL manually.',
+        invalidSourceOrigin: 'The current workspace must be connected to a valid Sub2API site.'
       }
     },
     lottery: {
@@ -2082,6 +2121,40 @@ export default {
         adminSession: 'The admin session is unavailable. Ask the site administrator to reconnect the workspace.',
         upstreamUnsupported: 'This Sub2API version does not support the leaderboard. Ask an administrator to upgrade it.',
         upstreamRequest: 'Leaderboard data is temporarily unavailable. Try again later.'
+      }
+    },
+    checkin: {
+      title: 'Daily Check-in', subtitle: 'Claim a random balance reward each day and earn bonuses for consecutive check-ins.', loading: 'Loading check-in status...',
+      actions: { refresh: 'Refresh check-in status', checkin: 'Check in now', checked: 'Checked in today' },
+      today: {
+        ready: 'Ready to check in', done: 'Today\'s check-in is complete', range: 'Receive a random balance reward from {min} to {max}',
+        rewarded: 'You received {amount} balance', milestoneBonus: 'This includes a {amount} streak bonus'
+      },
+      streak: { label: 'Current check-in streak', days: 'days' },
+      stats: { totalDays: 'Total check-ins', longestStreak: 'Longest streak', totalRewards: 'Total balance earned', rank: 'Check-in rank', unranked: 'Unranked' },
+      calendar: {
+        title: 'Last 30 Days', description: 'Blue dates indicate a successfully delivered check-in reward.',
+        checkedTitle: 'Checked in on {date}, received {amount} balance', emptyTitle: 'No check-in on {date}'
+      },
+      leaderboard: {
+        title: 'Check-in Days Leaderboard', description: 'Ranks users by total successful check-in days.', top: 'Top 10', empty: 'No users are ranked yet.',
+        rank: 'Rank', user: 'User', days: 'Days', streak: 'Streak', anonymous: 'Anonymous user', me: 'Me'
+      },
+      milestone: {
+        next: 'Next streak reward', description: 'Check in for {days} consecutive days to receive an extra {amount} balance.', completed: 'You have completed every configured streak reward.'
+      },
+      history: {
+        title: 'Recent check-ins', count: '{count} records', empty: 'No check-in history yet. Complete today\'s first check-in.',
+        streak: '{count} day streak', includesBonus: 'Includes streak bonus'
+      },
+      errors: {
+        title: 'Unable to load check-in', network: 'Network request failed. Check the connection and try again.', request: 'The check-in request failed. Try again later.',
+        missingParams: 'Required iframe session parameters are missing. Open this page from a Sub2API custom menu.', configNotFound: 'The check-in embed is not configured.',
+        invalidSrcHost: 'The source address is invalid.', srcHostMismatch: 'The source site does not match the check-in configuration.', sub2apiAuth: 'Identity verification failed. Refresh the page and try again.',
+        sub2apiRequest: 'Unable to connect to the source site. Try again later.', userMismatch: 'User identity verification failed.', userInactive: 'The source account is inactive.',
+        sessionInvalid: 'The session expired. Refresh the page and try again.', adminSession: 'The admin session is unavailable. Ask the site administrator to reconnect the workspace.',
+        sourceBinding: 'The check-in source changed. Ask an administrator to refresh the check-in settings.', disabled: 'Daily check-in is not currently available.',
+        alreadyChecked: 'You have already checked in today.', rewardFailed: 'The balance reward could not be delivered. Try again later.'
       }
     },
     lottery: {

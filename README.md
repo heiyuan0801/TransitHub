@@ -85,6 +85,7 @@ The project is built as a Go backend with a Vue 3 admin frontend, backed by Post
 - **Dashboard metrics** - View live and historical operation data, including balances, costs, trends, group usage, and upstream drilldowns.
 - **Group multiplier tracking** - Track group multiplier snapshots, changes, history, platform tags, and custom group types.
 - **Group-rate campaigns** - Create immediate or scheduled pricing activities, update selected admin groups, retain activity records, and restore original multipliers at the configured end time.
+- **Daily check-in** - Give Sub2API users random daily balance rewards, streak milestones, and a secure embedded check-in page.
 - **Auto pricing support** - Configure mapped group auto-pricing rules based on upstream multiplier changes.
 - **Notification channels** - Configure DingTalk, Feishu, and Telegram bots for balance warnings, multiplier changes, auto-pricing, and campaign notifications.
 - **System settings** - Manage refresh intervals, notification strategy, and runtime display settings.

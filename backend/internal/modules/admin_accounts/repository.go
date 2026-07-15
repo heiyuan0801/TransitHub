@@ -31,6 +31,9 @@ const (
 )
 
 var workspaceDeleteStatements = []workspaceDeleteStatement{
+	{Name: "checkin_records", SQL: `DELETE FROM checkin_records WHERE user_id = $1 AND admin_account_id = $2`},
+	{Name: "checkin_milestones", SQL: `DELETE FROM checkin_milestones WHERE user_id = $1 AND admin_account_id = $2`},
+	{Name: "checkin_configs", SQL: `DELETE FROM checkin_configs WHERE user_id = $1 AND admin_account_id = $2`},
 	{Name: "lottery_reward_jobs", SQL: `DELETE FROM lottery_reward_jobs WHERE user_id = $1 AND admin_account_id = $2`},
 	{Name: "lottery_winners", SQL: `DELETE FROM lottery_winners WHERE user_id = $1 AND admin_account_id = $2`},
 	{Name: "lottery_draws", SQL: `DELETE FROM lottery_draws WHERE user_id = $1 AND admin_account_id = $2`},
@@ -66,6 +69,9 @@ var workspaceDeleteStatements = []workspaceDeleteStatement{
 }
 
 var legacyWorkspaceTables = []workspaceTableDescriptor{
+	{Name: "checkin_configs", WorkspaceColumn: "admin_account_id"},
+	{Name: "checkin_milestones", WorkspaceColumn: "admin_account_id"},
+	{Name: "checkin_records", WorkspaceColumn: "admin_account_id"},
 	{Name: "lottery_embed_configs", WorkspaceColumn: "admin_account_id"},
 	{Name: "lottery_campaigns", WorkspaceColumn: "admin_account_id"},
 	{Name: "lottery_prizes", WorkspaceColumn: "admin_account_id"},

@@ -33,6 +33,16 @@ func normalizeSrcHostWithPrivateTargets(value string, allowPrivateTargets bool) 
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+// NormalizeSrcHostForEmbed exposes the same source-origin policy to sibling
+// embed modules so every public Sub2API integration uses identical SSRF rules.
+func NormalizeSrcHostForEmbed(value string, allowPrivateTargets bool) (string, error) {
+	return normalizeSrcHostWithPrivateTargets(value, allowPrivateTargets)
+}
+
+func MaskEmail(email string) string { return maskEmail(email) }
+
+func ViewerActive(status string) bool { return viewerActive(status) }
+
 func isAllowedSrcHost(host string, allowPrivateTargets bool) bool {
 	if host == "" {
 		return false

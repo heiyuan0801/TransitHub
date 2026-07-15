@@ -39,6 +39,11 @@ const routes = [
     component: () => import('./modules/embed/lottery/LotteryEmbedPage.vue')
   },
   {
+    path: '/embed/checkin',
+    name: 'EmbedCheckin',
+    component: () => import('./modules/embed/checkin/CheckinEmbedPage.vue')
+  },
+  {
     path: '/admin',
     component: () => import('./modules/admin/layout/AdminLayout.vue'),
     meta: { requiresAuth: true },
@@ -102,6 +107,12 @@ const routes = [
         name: 'AdminLottery',
         meta: { requiresWorkspace: true },
         component: () => import('./modules/lottery/LotteryAdminPage.vue')
+      },
+      {
+        path: 'checkin',
+        name: 'AdminCheckin',
+        meta: { requiresWorkspace: true },
+        component: () => import('./modules/checkin/CheckinAdminPage.vue')
       },
       {
         path: 'mass-email',

@@ -23,7 +23,7 @@ concurrency:
 
 env:
   GHCR_IMAGE: ghcr.io/heiyuan0801/transithub
-  DOCKERHUB_IMAGE: ${{ vars.DOCKER_USER }}/transithub
+  DOCKERHUB_IMAGE: 192586992/transithub
 
 jobs:
   publish:
@@ -35,7 +35,7 @@ jobs:
       - name: Sign in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ vars.DOCKER_USER }}
+          username: 192586992
           password: ${{ secrets.DOCKER_PAT }}
 
       - name: Sign in to GitHub Container Registry

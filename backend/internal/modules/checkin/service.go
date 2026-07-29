@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -424,6 +425,14 @@ func (s *Service) FrameAncestorOrigin(ctx context.Context, embedToken string) (s
 		return "", false
 	}
 	if _, err := s.validateSourceBinding(ctx, config.UserID, config.AdminAccountID, config.Sub2apiSourceOrigin); err != nil {
+		// The stored origin is the value that was explicitly bound when the
+		// embed configuration was created. A temporary admin-session expiry
+		// should not make an otherwise valid iframe impossible to load; the
+		// session is still required when creating the user session and making
+		// the check-in request.
+		if errors.Is(err, requestError(ErrorEmbedAdminSession)) {
+			return config.Sub2apiSourceOrigin, true
+		}
 		return "", false
 	}
 	return config.Sub2apiSourceOrigin, true

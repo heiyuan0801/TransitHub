@@ -111,7 +111,7 @@ git clone https://github.com/heiyuan0801/TransitHub.git transit-hub
 cd transit-hub
 
 # Edit deploy/docker-compose.prod.yml first:
-# - image tag (defaults to ghcr.io/heiyuan0801/transithub:v0.1.15)
+# - image tag (defaults to ghcr.io/heiyuan0801/transithub:v0.1.16)
 # - replace every change-this-* placeholder
 # - database password in both DATABASE_URL and POSTGRES_PASSWORD
 # - ADMIN_EMAIL / ADMIN_PASSWORD
@@ -164,7 +164,7 @@ This starts PostgreSQL and Redis on local ports `5432` and `6379`.
 Because the Dockerfile is stored in `deploy/` but expects the repository root as build context, build with:
 
 ```bash
-docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.15 .
+docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.16 .
 ```
 
 ### Publish Docker Images
@@ -172,14 +172,14 @@ docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.15 .
 Pushing a `v*` Git tag triggers GitHub Actions to build `linux/amd64` and `linux/arm64` images and publish them to GHCR:
 
 ```bash
-git tag v0.1.15
-git push origin v0.1.15
+git tag v0.1.16
+git push origin v0.1.16
 ```
 
 Published images:
 
 ```text
-ghcr.io/heiyuan0801/transithub:v0.1.15
+ghcr.io/heiyuan0801/transithub:v0.1.16
 ghcr.io/heiyuan0801/transithub:latest
 ```
 

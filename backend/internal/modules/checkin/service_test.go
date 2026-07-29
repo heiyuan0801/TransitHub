@@ -99,6 +99,12 @@ func (fakeAdminSessions) RequireSession(context.Context, string, string) (upstre
 	return upstream.Session{Platform: upstream.PlatformSub2API, BaseURL: "https://sub.example.com", AccessToken: "admin", TokenType: "Bearer"}, nil
 }
 
+type unavailableAdminSessions struct{}
+
+func (unavailableAdminSessions) RequireSession(context.Context, string, string) (upstream.Session, error) {
+	return upstream.Session{}, errors.New("admin session expired")
+}
+
 type fakeViewer struct{}
 
 func (fakeViewer) FetchCurrentUser(string, string) (lottery.Sub2APIUser, error) {
@@ -114,6 +120,21 @@ func (f *fakeRewards) Redeem(_ context.Context, _ upstream.Session, job lottery.
 	f.calls++
 	f.job = job
 	return lottery.RewardResult{Status: lottery.RewardFulfilled, RemoteRef: "reward-1"}
+}
+
+func TestFrameAncestorOriginFallsBackToStoredOriginWhenAdminSessionExpires(t *testing.T) {
+	store := &fakeStore{config: &Config{
+		UserID:              "owner",
+		AdminAccountID:      "workspace",
+		EmbedToken:          "embed",
+		Sub2apiSourceOrigin: "https://sub.example.com",
+	}}
+	service := NewService(store, &fakeSessions{}, fakeViewer{}, &fakeRewards{}, unavailableAdminSessions{})
+
+	origin, ok := service.FrameAncestorOrigin(context.Background(), "embed")
+	if !ok || origin != "https://sub.example.com" {
+		t.Fatalf("expected stored origin fallback, got origin=%q ok=%v", origin, ok)
+	}
 }
 
 func TestCheckInAddsMilestoneBonusAndDeliversOnce(t *testing.T) {

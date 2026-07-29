@@ -42,6 +42,21 @@ const (
 	ProviderCustom    = "custom"
 )
 
+// PriorityMode 控制策略是否同步上游账号/渠道的调度优先级。空值和 none 都保持旧行为；
+// multiplier 表示在健康状态优先的前提下，按 admin 分组原始倍率从低到高排序，并把排序结果
+// 映射为上游平台的 priority。使用字符串常量是为了兼容数据库中未来扩展其它排序模式。
+const (
+	PriorityModeNone       = "none"
+	PriorityModeMultiplier = "multiplier"
+)
+
+// StrategyMode 明确区分策略是否需要真实模型探活。旧策略和旧客户端缺省为 health_probe；
+// multiplier_only 只读取 admin 分组倍率并同步优先级，绝不进入模型候选、凭据解析或探活预算链路。
+const (
+	StrategyModeHealthProbe    = "health_probe"
+	StrategyModeMultiplierOnly = "multiplier_only"
+)
+
 const (
 	ErrorRequest          = "admin.connectionHealth.errors.request"
 	ErrorUnknown          = "admin.connectionHealth.errors.unknown"
@@ -63,6 +78,9 @@ const (
 	ErrorManualModelsRequired = "admin.connectionHealth.errors.manualModelsRequired"
 	// ErrorPolicyNotFound：分配策略时传入的 policyId 不属于当前 workspace 或不存在。
 	ErrorPolicyNotFound = "admin.connectionHealth.errors.policyNotFound"
+	// ErrorMultiplierRequired 表示用户尝试给没有有效倍率的分组启用倍率优先级策略。
+	// 前端应提示先在上游配置倍率；后端绝不使用 1x 等猜测值代替。
+	ErrorMultiplierRequired = "admin.connectionHealth.errors.multiplierRequired"
 )
 
 // PolicyAssignment 对应 connection_health_policy_assignments 表：一条「target 显式绑定某条策略」
@@ -75,6 +93,66 @@ type PolicyAssignment struct {
 	PolicyID       string    `json:"policyId"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// GroupPolicyAssignment 表示「admin 上游分组 -> 健康策略」的动态分配关系。与旧的 target
+// 分配并存：调度器每轮从上游重新读取分组账号/渠道，因此分组后续新增的目标会自动继承策略。
+type GroupPolicyAssignment struct {
+	ID             string    `json:"id"`
+	UserID         string    `json:"-"`
+	AdminAccountID string    `json:"-"`
+	AdminGroupID   string    `json:"adminGroupId"`
+	AdminGroupName string    `json:"adminGroupName"`
+	PolicyID       string    `json:"policyId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// GroupTargetExclusion 是分组策略的目标级例外。排除只阻止目标继承该分组的策略，不会覆盖
+// 目标原有的显式 PolicyAssignment，保证旧版逐目标配置继续生效。
+type GroupTargetExclusion struct {
+	ID             string    `json:"id"`
+	UserID         string    `json:"-"`
+	AdminAccountID string    `json:"-"`
+	AdminGroupID   string    `json:"adminGroupId"`
+	TargetID       string    `json:"targetId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+// PrioritySyncState 记录倍率策略接管目标前的优先级和最后一次系统写入值。同步前若发现上游
+// 当前值不等于 LastAppliedPriority，说明管理员在上游做过人工修改；系统标记 Conflict 并停止
+// 覆盖。策略停止管理后，仅在上游值仍等于最后写入值时恢复 OriginalPriority。
+type PrioritySyncState struct {
+	UserID              string `json:"-"`
+	AdminAccountID      string `json:"-"`
+	TargetID            string `json:"targetId"`
+	OriginalPriority    int    `json:"originalPriority"`
+	LastAppliedPriority int    `json:"lastAppliedPriority"`
+	// PendingPriority is persisted before an upstream write. If the process dies or the
+	// database write after the upstream call fails, the next tick can confirm the value
+	// instead of treating a successful system write as a manual conflict.
+	PendingPriority      *int      `json:"-"`
+	EffectiveMultiplier  float64   `json:"effectiveMultiplier"`
+	Conflict             bool      `json:"conflict"`
+	LastConflictPriority *int      `json:"lastConflictPriority,omitempty"`
+	UpdatedAt            time.Time `json:"updatedAt"`
+}
+
+// TargetActionState 记录分组健康首次接管账号/渠道启停或权重前的上游状态。
+// 健康恢复后只能恢复到这里保存的原值，不能假设账号原本一定启用或权重一定为 100。
+type TargetActionState struct {
+	UserID            string
+	AdminAccountID    string
+	TargetID          string
+	OriginalStatus    string
+	OriginalWeight    *int
+	LastAppliedStatus string
+	LastAppliedWeight *int
+	PendingStatus     string
+	PendingWeight     *int
+	Conflict          bool
+	UpdatedAt         time.Time
 }
 
 // Policy 对应 connection_health_policies 表：一条健康探活/降级策略，
@@ -97,6 +175,8 @@ type Policy struct {
 	RecoveryStepPercent     int       `json:"recoveryStepPercent"`
 	AutoDegradeEnabled      bool      `json:"autoDegradeEnabled"`
 	AutoRemoteActionEnabled bool      `json:"autoRemoteActionEnabled"`
+	PriorityMode            string    `json:"priorityMode"`
+	StrategyMode            string    `json:"strategyMode"`
 	DailyProbeBudget        int       `json:"dailyProbeBudget"`
 	CreatedAt               time.Time `json:"createdAt"`
 	UpdatedAt               time.Time `json:"updatedAt"`
@@ -154,6 +234,8 @@ type ConnectionHealthEvent struct {
 	ModelName         string
 	UserID            string
 	AdminAccountID    string
+	PolicyID          string
+	AdminGroupID      string
 	OwnGroupName      string
 	UpstreamSiteID    string
 	UpstreamGroupName string
@@ -184,6 +266,13 @@ type MySitesReader interface {
 	ListRealConnectionsForWorkspace(ctx context.Context, userID string, adminAccountID string) ([]my_sites.RealConnection, error)
 	MappingOptions(ctx context.Context, userID string) (my_sites.MappingOptionsResponse, error)
 	RequireSession(ctx context.Context, userID string, adminAccountID string) (upstream.Session, error)
+}
+
+// UpstreamKeyReader 是分组健康展示上游 API Key 当前分组时使用的可选能力。
+// 它没有并入 MySitesReader 的必选方法，避免破坏旧测试替身和其它既有注入实现；生产环境的
+// *my_sites.Service 已结构性满足该接口。调用方只读取 ID/分组元数据，绝不记录或返回 Key 明文。
+type UpstreamKeyReader interface {
+	ListUpstreamKeys(ctx context.Context, userID string, siteID string) ([]upstream.Sub2APIKeyItem, error)
 }
 
 // SiteLookup 是 connection_health 对 upstream 模块的只读依赖：按站点 ID 取 base_url 和平台类型。

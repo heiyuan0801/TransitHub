@@ -65,7 +65,10 @@ export interface AdminGroupHealthSummary {
   probeableAccounts: number
   unprobeableAccounts: number
   healthyModels: number
+  // degradedModels 为兼容旧版，仍包含 degraded + observing + recovering。
   degradedModels: number
+  observingModels?: number
+  recoveringModels?: number
   suspendedModels: number
   disabledModels: number
   unconfiguredModels: number
@@ -77,12 +80,19 @@ export interface TargetPolicyAssignmentSummary {
   policyId: string
   policyName: string
   enabled: boolean
+  priorityMode?: ConnectionHealthPriorityMode
+  autoRemoteActionEnabled?: boolean
 }
 
 // TargetPolicyAssignments 是策略分配管理接口 GET/PUT 的响应体。
 export interface TargetPolicyAssignments {
   policyIds: string[]
   policies: TargetPolicyAssignmentSummary[]
+}
+
+export interface AdminGroupUnprobedModel {
+  modelName: string
+  providerFamily: string
 }
 
 export interface AdminGroupAccount {
@@ -94,21 +104,35 @@ export interface AdminGroupAccount {
   schedulable?: boolean
   priority?: number
   concurrency?: number
+  // Sub2API admin 转发账号记录自身的 rate_multiplier；保留用于兼容既有接口。
   rateMultiplier?: number
   loadFactor?: number
   weight?: number
   models?: string
   groupIds?: string[]
+  // 真实对接记录中该转发账号所使用的上游 API Key 所属分组及其当前倍率。
+  // 旧后端或无法可靠关联的账号不返回这两个字段，前端按未知值展示。
+  upstreamKeyGroupName?: string
+  upstreamKeyGroupMultiplier?: number
   // 独立探活字段：targetId 是稳定探活目标 ID，手动探活/事件按 targetId 走。
   targetId: string
   probeAvailable: boolean
   probeUnavailableReason?: AdminProbeUnavailableReason | string
   modelHealth: ModelHealth[]
+  // 新后端单独返回尚无状态的配置模型；旧后端缺失该字段时按空数组兼容。
+  unprobedModels?: AdminGroupUnprobedModel[]
   // 策略分配字段：与 probeAvailable 完全解耦——未分配策略仍可手动一次性探活，只是不会被
   // 调度器自动探活。旧后端响应不带这些字段时前端按「未分配」兜底展示，不强制要求存在。
   assignedPolicyIds?: string[]
   assignedPolicies?: TargetPolicyAssignmentSummary[]
   hasAssignedPolicy?: boolean
+  hasEnabledPolicy?: boolean
+  hasEnabledProbePolicy?: boolean
+  policyAssignmentSource?: 'none' | 'target' | 'group' | 'mixed' | string
+  excludedFromGroupPolicy?: boolean
+  priorityManaged?: boolean
+  priorityConflict?: boolean
+  effectiveMultiplier?: number | null
 }
 
 export interface AdminGroupHealth {
@@ -122,6 +146,15 @@ export interface AdminGroupHealth {
   multiplier: number | null
   multiplierDisplay: string
   accountCount: number
+  monitoredAccountCount?: number
+  excludedAccountCount?: number
+  assignedPolicyIds?: string[]
+  assignedPolicies?: TargetPolicyAssignmentSummary[]
+  hasAssignedPolicy?: boolean
+  hasEnabledPolicy?: boolean
+  hasEnabledProbePolicy?: boolean
+  priorityMode?: ConnectionHealthPriorityMode
+  priorityConflictCount?: number
   healthSummary: AdminGroupHealthSummary
   // accountsError 非空（i18n key）表示该分组账号列表加载失败，其余分组不受影响。
   accountsError?: string
@@ -154,6 +187,17 @@ export interface ConnectionHealthOverview {
   disabled: number
   unconfigured: number
   recentEvents: ConnectionHealthEvent[]
+}
+
+// 工作台轻量摘要只来自本地健康状态与事件表，不会在页面加载时触发上游探活。
+export interface ConnectionHealthStoredSummary {
+  totalTargets: number
+  healthyTargets: number
+  attentionTargets: number
+  suspendedTargets: number
+  managedTargets: number
+  recentFailureEvents: number
+  lastProbeAt?: string | null
 }
 
 export interface ModelTargetInput {
@@ -190,6 +234,8 @@ export interface ConnectionHealthPolicy {
   recoveryStepPercent: number
   autoDegradeEnabled: boolean
   autoRemoteActionEnabled: boolean
+  priorityMode?: ConnectionHealthPriorityMode
+  strategyMode?: ConnectionHealthStrategyMode
   dailyProbeBudget: number
   createdAt: string
   updatedAt: string
@@ -244,6 +290,27 @@ export interface PolicyInput {
   recoveryStepPercent?: number
   autoDegradeEnabled: boolean
   autoRemoteActionEnabled: boolean
+  priorityMode?: ConnectionHealthPriorityMode
+  strategyMode?: ConnectionHealthStrategyMode
   dailyProbeBudget?: number
   modelTargets: ModelTargetInput[]
+}
+
+export type ConnectionHealthPriorityMode = 'none' | 'multiplier'
+export type ConnectionHealthStrategyMode = 'health_probe' | 'multiplier_only'
+
+// AdminGroupPolicyConfiguration 对应分组级动态策略配置。排除列表只影响分组继承，不会清除
+// 旧版逐 target 显式分配，保证已上线配置继续生效。
+export interface AdminGroupPolicyConfiguration {
+  adminGroupId: string
+  adminGroupName: string
+  policyIds: string[]
+  policies: TargetPolicyAssignmentSummary[]
+  excludedTargetIds: string[]
+}
+
+export interface AdminGroupPolicyConfigurationInput {
+  policyIds: string[]
+  excludedTargetIds: string[]
+  quickPolicy?: PolicyInput
 }

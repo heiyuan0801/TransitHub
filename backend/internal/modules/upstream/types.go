@@ -31,6 +31,9 @@ const (
 	ErrorRequest         = "admin.upstream.errors.request"
 	ErrorInvalidResponse = "admin.upstream.errors.invalidResponse"
 	ErrorUnknown         = "admin.upstream.errors.unknown"
+	// ErrorSub2APIBulkUpdateUnsupported 表示当前 Sub2API 站点没有字段级批量更新能力。
+	// 调度优先级/状态更新遇到该能力缺失时必须要求升级，绝不回退到整对象回写。
+	ErrorSub2APIBulkUpdateUnsupported = "admin.upstream.errors.sub2APIBulkUpdateUnsupported"
 )
 
 // SSE 同步流事件类型。
@@ -75,6 +78,7 @@ type GroupInfo struct {
 	Platform          *string  `json:"platform"`
 	Multiplier        *float64 `json:"multiplier"`
 	MultiplierDisplay string   `json:"multiplierDisplay"`
+	MultiplierMode    string   `json:"multiplierMode,omitempty"`
 	// 以下字段为 sub2api 专属倍率合并规则新增的向后兼容字段：/groups/available 默认倍率
 	// 与 /groups/rates 专属倍率覆盖后，Multiplier 始终表示最终生效倍率；这些字段仅供前端
 	// 展示"默认倍率 -> 专属倍率"提示，不参与业务计算。旧数据缺少这些字段时 omitempty 生效，
@@ -357,6 +361,29 @@ type KeyUsageTodayItem struct {
 	TodayAmount  float64
 	RawAmount    float64
 	RechargeRate float64
+}
+
+// KeyUsageCollectionError 表示跨多个上游站点采集 Key 用量时有站点失败。
+// Items 仍由调用方通过正常返回值获得；FailedSites < TotalSites 时属于部分成功，
+// 调用方可以展示已成功数据并明确标注缺失范围，而不必把失败站点静默当成零消费。
+type KeyUsageCollectionError struct {
+	FailedSites int
+	TotalSites  int
+	Cause       error
+}
+
+func (e *KeyUsageCollectionError) Error() string {
+	if e == nil || e.Cause == nil {
+		return ErrorRequest
+	}
+	return e.Cause.Error()
+}
+
+func (e *KeyUsageCollectionError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
 }
 
 // BalanceBreakdownItem 是仪表盘「上游总余额」下钻明细中单个站点的余额展示数据。

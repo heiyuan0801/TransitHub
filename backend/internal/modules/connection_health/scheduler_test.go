@@ -28,6 +28,26 @@ func TestIsDue_DisabledNeverDue(t *testing.T) {
 	}
 }
 
+func TestRecordTargetCredentialUnavailable_PreservesLegacyRemoteAction(t *testing.T) {
+	repo := newFakeRepository()
+	svc := &Service{repo: repo}
+	targetID := "sub2api:ws1:acc-1"
+	repo.states[targetID] = map[string]ConnectionHealthState{
+		"gpt-4o": {
+			ConnectionID: targetID, ModelName: "gpt-4o", UserID: "user1", AdminAccountID: "ws1",
+			State: StateSuspended, LastRemoteAction: RemoteActionSub2APIStatusInactive,
+		},
+	}
+	target := AdminProbeTarget{TargetID: targetID, Platform: string(upstream.PlatformSub2API), AccountID: "acc-1"}
+	spec := probeModelSpec{modelName: "gpt-4o", policy: Policy{ID: "p1"}}
+
+	svc.recordTargetCredentialUnavailable(context.Background(), "user1", "ws1", target, []probeModelSpec{spec}, upstream.ReasonCredentialUnavailable)
+	stored := repo.states[targetID]["gpt-4o"]
+	if stored.LastRemoteAction != RemoteActionSub2APIStatusInactive {
+		t.Fatalf("credential failure must preserve legacy ownership evidence, got %+v", stored)
+	}
+}
+
 func TestIsDue_WithinCooldownIsNotDue(t *testing.T) {
 	repo := newFakeRepository()
 	future := time.Now().Add(1 * time.Minute)
@@ -124,6 +144,27 @@ func TestCollectAdminProbeJobs_UnassignedTargetNeverScheduled(t *testing.T) {
 	jobs := svc.collectAdminProbeJobs(context.Background(), policies, nil)
 	if len(jobs) != 0 {
 		t.Fatalf("expected no jobs without any policy assignment, got %d", len(jobs))
+	}
+}
+
+// TestCollectAdminProbeJobs_MultiplierOnlyNeverScheduled guards the central safety contract:
+// even legacy or malformed rows that still contain model targets cannot enter probe scheduling.
+func TestCollectAdminProbeJobs_MultiplierOnlyNeverScheduled(t *testing.T) {
+	repo := newFakeRepository()
+	mySites := fakeMySitesReader{session: upstream.Session{Platform: upstream.PlatformNewAPI}}
+	svc := &Service{repo: repo, mySites: mySites, platformGroups: schedulerReader("100")}
+	policies := []Policy{{
+		ID: "p1", UserID: "user1", AdminAccountID: "ws1", Enabled: true,
+		StrategyMode: StrategyModeMultiplierOnly, PriorityMode: PriorityModeMultiplier,
+		ModelTargets: []ModelTarget{{ModelName: "legacy-model", Enabled: true}},
+	}}
+	assignments := []PolicyAssignment{{
+		UserID: "user1", AdminAccountID: "ws1", TargetID: "newapi:ws1:100", PolicyID: "p1",
+	}}
+
+	jobs := svc.collectAdminProbeJobs(context.Background(), policies, assignments)
+	if len(jobs) != 0 {
+		t.Fatalf("multiplier-only policy must never generate probe jobs: %+v", jobs)
 	}
 }
 

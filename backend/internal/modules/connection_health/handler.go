@@ -18,6 +18,7 @@ type Handler struct {
 func RegisterRoutes(mux *http.ServeMux, service *Service) {
 	handler := &Handler{service: service}
 	mux.HandleFunc("GET /api/connection-health/overview", handler.overview)
+	mux.HandleFunc("GET /api/connection-health/stored-summary", handler.storedSummary)
 	mux.HandleFunc("GET /api/connection-health/groups", handler.groups)
 	mux.HandleFunc("GET /api/connection-health/admin-groups", handler.adminGroups)
 	mux.HandleFunc("GET /api/connection-health/events", handler.events)
@@ -28,10 +29,27 @@ func RegisterRoutes(mux *http.ServeMux, service *Service) {
 	mux.HandleFunc("GET /api/connection-health/policies", handler.listPolicies)
 	mux.HandleFunc("POST /api/connection-health/policies", handler.createPolicy)
 	mux.HandleFunc("PUT /api/connection-health/policies/{id}", handler.updatePolicy)
+	mux.HandleFunc("DELETE /api/connection-health/policies/{id}", handler.deletePolicy)
 	mux.HandleFunc("GET /api/connection-health/targets/{id}/models", handler.discoverTargetModels)
 	mux.HandleFunc("POST /api/connection-health/targets/{id}/manual-probe", handler.manualProbeTarget)
 	mux.HandleFunc("GET /api/connection-health/targets/{id}/policy-assignments", handler.getPolicyAssignments)
 	mux.HandleFunc("PUT /api/connection-health/targets/{id}/policy-assignments", handler.putPolicyAssignments)
+	mux.HandleFunc("GET /api/connection-health/admin-groups/{id}/policy-configuration", handler.getAdminGroupPolicyConfiguration)
+	mux.HandleFunc("PUT /api/connection-health/admin-groups/{id}/policy-configuration", handler.putAdminGroupPolicyConfiguration)
+}
+
+func (h *Handler) storedSummary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	response, err := h.service.StoredSummary(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, response)
 }
 
 func (h *Handler) overview(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +265,19 @@ func (h *Handler) updatePolicy(w http.ResponseWriter, r *http.Request) {
 	httpjson.Write(w, http.StatusOK, policy)
 }
 
+func (h *Handler) deletePolicy(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	if err := h.service.DeletePolicy(r.Context(), userID, r.PathValue("id")); err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
 // discoverTargetModels 是手动一次性探活弹窗打开时调用的 server-only 模型发现接口：
 // 后端用当前 admin session 临时解析该 target 的 base_url + key，请求上游 /v1/models，
 // 只把安全字段（id/name/ownedBy/providerFamily）返回前端，不回传/落库任何凭据。
@@ -330,6 +361,39 @@ func (h *Handler) putPolicyAssignments(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.service.SetTargetPolicyAssignments(r.Context(), userID, targetID, input.PolicyIDs)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, result)
+}
+
+func (h *Handler) getAdminGroupPolicyConfiguration(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	result, err := h.service.GetAdminGroupPolicyConfiguration(r.Context(), userID, r.PathValue("id"))
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, result)
+}
+
+func (h *Handler) putAdminGroupPolicyConfiguration(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	var input AdminGroupPolicyConfigurationInput
+	if err := httpjson.Decode(r, &input); err != nil && !errors.Is(err, io.EOF) {
+		httpjson.WriteError(w, http.StatusBadRequest, ErrorRequest)
+		return
+	}
+	result, err := h.service.SetAdminGroupPolicyConfiguration(r.Context(), userID, r.PathValue("id"), input)
 	if err != nil {
 		writeError(w, err)
 		return

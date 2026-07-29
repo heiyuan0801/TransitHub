@@ -122,7 +122,7 @@ export default {
       upstream: 'Upstream',
       groupManagement: 'Group Management',
       groupRates: 'Group Rates',
-      groupAssociations: 'Group Associations',
+      groupAssociations: 'Pricing Mappings',
       connectionHealth: 'Group Health',
       groupRateCampaigns: 'Rate Campaigns',
       sub2apiFeatures: 'Embedded Features',
@@ -445,6 +445,7 @@ export default {
         todayPurchase: "Today's Cost",
         netProfit: "Today's Net Profit",
         upstreamBalance: 'Upstream Total Balance',
+        profitMargin: "Today's Margin",
         groupCount: 'My Groups',
         groupCountCaption: 'Click to view group details'
       },
@@ -459,11 +460,69 @@ export default {
         month: 'Month'
       },
       delta: {
-        vsPrev: 'vs prev day'
+        vsPrev: 'vs prev day',
+        percentagePoints: '{value} pts'
+      },
+      common: {
+        unavailable: 'N/A'
+      },
+      performance: {
+        title: 'Business Performance',
+        subtitle: 'Revenue, cost, and net profit over the same period',
+        periodRevenue: 'Period Revenue',
+        periodCost: 'Period Cost',
+        periodProfit: 'Period Net Profit',
+        chartAria: 'Combined revenue, cost, and net profit trend chart'
+      },
+      capital: {
+        title: 'Capital Safety',
+        subtitle: 'Balance coverage and cost runway',
+        siteBalance: 'Site User Balance',
+        upstreamBalance: 'Upstream Balance',
+        coverage: 'Balance Coverage',
+        coverageHint: 'Upstream balance relative to total site user balance',
+        runway: 'Estimated Runway',
+        runwayHint: 'Based on average daily cost for this period',
+        runwayValue: '{value} days'
+      },
+      groups: {
+        title: 'Group Contribution',
+        subtitle: 'Top groups by revenue today',
+        total: '{count} groups',
+        amount: "Today's Revenue",
+        topThreeShare: 'Top 3 revenue share',
+        empty: 'No group revenue data available.',
+        loadError: 'Group contribution data is temporarily unavailable.',
+        chartAria: 'Today group revenue contribution ranking chart'
+      },
+      attention: {
+        title: 'Needs Attention',
+        subtitle: 'Health status and upstream balance issues',
+        healthTitle: 'Target Health Issues',
+        healthDescription: '{attention} need attention, {suspended} suspended or disabled',
+        failuresTitle: 'Probe Failures in 24 Hours',
+        failuresDescription: 'Review failure categories and recent state changes',
+        upstreamTitle: 'Upstream Balance Issues',
+        upstreamDescription: 'Some upstream sites have unknown balances or connection errors',
+        allClearTitle: 'No Clear Issues',
+        allClearDescription: 'No health target or upstream balance issue currently requires attention.',
+        unavailableTitle: 'Operational Status Unavailable',
+        unavailableDescription: 'Core business metrics are unaffected. Retry health and upstream status shortly.',
+        lastProbe: 'Last probe: {time}',
+        neverProbed: 'No records',
+        refresh: 'Refresh operational status',
+        partialLoadError: 'Some operational data failed to load'
       },
       loading: 'Loading metrics...',
       loadError: 'Failed to load dashboard metrics.',
       retry: 'Retry',
+      dataStatus: {
+        refreshing: 'Refreshing latest data',
+        updatedAt: 'Updated at {time}',
+        waiting: 'Waiting for first update',
+        failed: 'Refresh failed; showing previous data',
+        refresh: 'Refresh dashboard data'
+      },
       loadingModal: {
         title: 'Loading Dashboard Data',
         progress: '{progress}% complete',
@@ -494,8 +553,12 @@ export default {
         subtitle: '{count} keys, {total} total',
         close: 'Close',
         empty: 'No keys with usage today.',
-        loadError: 'Failed to load today\'s cost breakdown.',
+        loadError: 'Failed to load today\'s cost breakdown. Check upstream site connections and retry.',
+        partialWarning: '{failed} of {total} upstream sites are unavailable. Totals include successful sites only.',
         retry: 'Retry',
+        errors: {
+          unavailable: 'Key usage is unavailable for every upstream site. Check site connections or credentials.'
+        },
         columns: {
           siteName: 'Upstream Site',
           keyName: 'Key Name',
@@ -611,13 +674,85 @@ export default {
       }
     },
     groupAssociations: {
-      title: 'Group Mappings',
-      subtitle: '{count} groups · {associated} associated · {unassociated} unassociated',
+      title: 'Pricing Mappings',
+      detailsLabel: 'Pricing mapping details',
+      subtitle: '{count} groups · {associated} configured · {unassociated} not configured',
+      common: {
+        placeholder: '—',
+        multiplier: '{value}x',
+        unknown: 'Unknown platform'
+      },
+      actions: {
+        refresh: 'Refresh', retry: 'Retry', cleanup: 'Clean up stale config', editTargets: 'Edit sources', manage: 'Manage pricing mapping', openProfitCalculator: 'Open profit budget calculator', customProfitCalculator: 'Custom Profit Calculator'
+      },
+      filters: {
+        searchLabel: 'Search pricing mappings', searchPlaceholder: 'Search own groups or upstream sources...',
+        all: 'All', associated: 'Configured', unassociated: 'Not configured', stale: 'Stale'
+      },
+      listAria: 'My group list',
+      targetCount: '{count} pricing sources',
+      detailSubtitle: '{count} upstream groups used as pricing sources',
+      staleOwnGroup: 'The admin site no longer returns this group. Its configuration is preserved until you confirm cleanup.',
+      staleTarget: 'Upstream stale',
+      metrics: {
+        ownMultiplier: 'My group multiplier',
+        targets: 'Pricing sources',
+        budgetMargin: 'Budget gross margin',
+        marginRange: '{minimum} - {maximum}',
+        autoPricing: 'Auto-pricing',
+        effectiveUpstream: 'Effective upstream multiplier',
+        effectiveCost: 'Converted cost multiplier'
+      },
+      profitCalculator: {
+        titleWithGroup: '{group} · Profit Budget',
+        customTitle: 'Custom Profit Calculator',
+        close: 'Close profit budget',
+        modeLabel: 'Profit calculation mode',
+        groupMode: 'Current Group',
+        customMode: 'Custom Calculation',
+        revenueLabel: 'Simulated Sales Revenue (CNY)',
+        revenuePlaceholder: 'Enter simulated sales revenue',
+        invalidRevenue: 'Enter a valid amount greater than or equal to 0.',
+        ownMultiplier: 'My Selling Multiplier',
+        upstreamCostMultiplier: 'Converted Upstream Cost Multiplier',
+        saleMultiplier: 'My Selling Multiplier',
+        multiplierPlaceholder: 'Enter multiplier',
+        invalidUpstreamMultiplier: 'Enter a valid multiplier greater than or equal to 0.',
+        invalidSaleMultiplier: 'Enter a valid multiplier greater than 0.',
+        profitRange: 'Estimated Gross Profit Range',
+        profitMargin: 'Estimated Profit Margin',
+        amountRange: '{minimum} - {maximum}',
+        estimatedCost: 'Estimated Purchase Cost',
+        estimatedProfit: 'Estimated Gross Profit',
+        noTargetsTitle: 'No Calculable Upstreams',
+        noTargetsDescription: 'Configure a valid pricing source for this group first.'
+      },
+      sections: {
+        targets: 'Pricing sources', targetsSummary: '{count} upstream sources', autoPricing: 'Auto-pricing policy'
+      },
+      noTargets: {
+        title: 'No pricing sources', description: 'Add an upstream source before configuring auto-pricing.'
+      },
+      targetsDrawer: {
+        titleWithGroup: '{group} · Edit pricing sources', selectedCount: '{count} upstream groups selected',
+        searchLabel: 'Search upstream groups', searchPlaceholder: 'Search site, platform, or group...',
+        emptyTitle: 'No matching upstream groups', emptyDescription: 'Adjust the search or sync an upstream site first.',
+        unknownMultiplier: 'No multiplier', autoMultiplier: 'Auto', multiplier: '{value}x', stale: 'Stale',
+        close: 'Close source editor', cancel: 'Cancel', save: 'Save sources', saving: 'Saving...'
+      },
+      cleanup: {
+        title: 'Clean up stale configuration',
+        description: 'This removes pricing sources and auto-pricing settings for “{group}”. It does not delete the remote group.',
+        cancel: 'Cancel', confirm: 'Confirm cleanup'
+      },
+      errors: {
+        primaryTargetRequired: 'The current primary upstream is used by auto-pricing. Change or disable auto-pricing before removing it.'
+      },
       close: 'Close',
       empty: 'No group mappings found.',
       loadError: 'Failed to load group list.',
       runError: 'Failed to run auto-pricing. Please try again.',
-      unassociatedLabel: 'No upstream linked',
+      unassociatedLabel: 'No pricing source',
       unassociatedMultiplier: 'Not available',
       columns: {
         index: '#',
@@ -768,6 +903,9 @@ export default {
       title: 'Group Health',
       subtitle: 'Independent lightweight probing of accounts/channels inside the current admin workspace groups, with health monitoring and automatic degrade/restore.',
       adminSubtitle: 'Shows all groups under the current admin workspace. Click the account count to view accounts/channels and their independent probe status.',
+      simplifiedSubtitle: 'Configure probes, automatic failover, and traffic priority around admin upstream groups. New accounts and channels inherit their group policy automatically.',
+      summaryLabel: 'Group health summary',
+      groupListLabel: 'Upstream group list',
       refresh: 'Refresh',
       empty: 'No probeable accounts/channels under the current admin workspace.',
       adminEmpty: 'No groups under the current admin workspace.',
@@ -798,6 +936,142 @@ export default {
         probeable: 'Probeable {probeable}/{total}',
         noneProbeable: 'No probeable targets',
         noProbe: '{count} pending probe'
+      },
+      groupList: {
+        monitored: 'Monitored {count}/{total}'
+      },
+      groupDetail: {
+        multiplierPriority: 'Multiplier priority',
+        subtitle: '{monitored} of {total} accounts or channels monitored',
+        enableMonitoring: 'Configure Group Strategy',
+        manageMonitoring: 'Manage Group Strategy',
+        unmonitored: 'Not auto-monitored',
+        policyCount: '{name} and {count} more',
+        unprobeable: 'Probe unavailable',
+        upstreamStatus: 'Upstream status: {status}',
+        unknownUpstreamStatus: 'Unknown',
+        priorityConflict: '{count} upstream priorities were changed manually. Automatic priority management has stopped for those targets to preserve the manual values. Save the group policy again to take control.',
+        priorityConflictShort: 'Upstream priority changed manually; automatic updates stopped',
+        empty: 'This group has no accounts or channels.',
+        metrics: {
+          accounts: 'Accounts / Channels',
+          monitored: 'Auto-monitored',
+          probeable: 'Manual probe ready',
+          lastProbe: 'Last Probe'
+        },
+        statusBreakdown: {
+          title: 'Current Group Probe States',
+          hint: 'Health states are counted by model; pending and unavailable are counted by target. These are not upstream enable/disable states.',
+          healthy: 'Healthy Models',
+          degraded: 'Degraded Models',
+          suspended: 'Probe Paused',
+          observing: 'Recovery Watch',
+          recovering: 'Recovering',
+          disabled: 'Manually Disabled',
+          notProbed: 'Awaiting First Probe',
+          unprobeable: 'Unavailable Targets'
+        },
+        assignmentSources: {
+          none: 'No policy source',
+          target: 'Target-specific policy',
+          group: 'Inherited group policy',
+          mixed: 'Group and target policies merged'
+        },
+        columns: {
+          expand: 'Expand model results',
+          account: 'Account / Channel',
+          health: 'Health',
+          strategy: 'Effective Policy',
+          priority: 'Upstream Priority',
+          multiplier: 'Effective Multiplier',
+          strategyMultiplier: 'My Group Multiplier',
+          upstreamMultiplier: 'Upstream API Key Multiplier',
+          actions: 'Actions'
+        },
+        upstreamMultiplierPending: 'Shown after linking',
+        models: {
+          empty: 'This target has no model probe results yet.',
+          latency: 'Latency {value} ms',
+          lastProbe: 'Last {value}',
+          weight: 'Health weight {value}%'
+        }
+      },
+      setup: {
+        title: 'Configure Group Automation',
+        stepsLabel: 'Group automation setup steps',
+        steps: {
+          '1': 'Effective Scope',
+          '2': 'Run Strategy',
+          '3': 'Review'
+        },
+		generatedPolicyName: '{group} - Group Automation Policy',
+		retry: 'Reload',
+        scope: {
+          title: 'Choose Strategy Targets',
+          description: 'Every account or channel in this group is selected by default. Unchecked targets are not auto-probed, failed over, or reprioritized.',
+          modelsUnknown: 'No model list returned by upstream',
+          probeable: 'Probe ready',
+          pending: 'Credentials needed',
+          futureHint: 'Targets added to this upstream group later inherit the policy automatically. Targets you uncheck remain excluded.'
+        },
+        strategy: {
+          title: 'Choose a run strategy',
+          description: 'Create a probe strategy, a multiplier-only priority strategy, or bind an existing advanced policy.',
+          options: {
+            multiplier: {
+              title: 'Multiplier Priority',
+              description: 'Among healthy targets, a lower multiplier gets higher upstream priority. Failed targets still degrade first.'
+            },
+            multiplierOnly: {
+              title: 'Multiplier Only',
+              description: 'Adjust upstream priority only by group multiplier, without model probes, degradation, or remote health actions.'
+            },
+            stable: {
+              title: 'Stability First',
+              description: 'Auto-probe and disable or restore failed targets using platform capabilities without changing routine priority.'
+            },
+            monitor: {
+              title: 'Monitor Only',
+              description: 'Record health and events without upstream disable, restore, or priority changes.'
+            },
+            existing: {
+              title: 'Use Existing Policies',
+              description: 'Bind one or more advanced probe policies when you need custom thresholds and budgets.'
+            }
+          },
+          modelsLabel: 'Probe Models',
+          modelsPlaceholder: 'One model per line, for example gpt-4o-mini',
+          modelsDetected: '{count} models will be probed',
+          modelSuggestions: {
+            common: '{count} models available on every selected target were recommended from existing data; no extra upstream request was made.',
+            discovered: 'No complete intersection was found. {count} models were recommended from existing model data and can be edited.'
+          },
+          providerLabel: 'Model Provider',
+          remoteActionLabel: 'Run Upstream Actions',
+          remoteActionHelp: 'Automatically disable or restore targets on failure and recovery when the platform supports it',
+          multiplierOnlyTitle: 'Sync Multiplier Priority Only',
+          multiplierOnlyHelp: 'The scheduler reads current group multipliers about every 30 seconds. Lower multipliers receive higher priority. No models or probe credentials are required.',
+          multiplierMissingTitle: 'This group has no valid multiplier',
+          multiplierMissingHelp: 'Set the group multiplier upstream before enabling multiplier sorting. The system will not assume 1x or change the current priority.'
+        },
+        confirm: {
+          title: 'Review Group Configuration',
+          description: 'Saving creates the group-level policy relationship immediately. The scheduler applies it on its next scan.',
+          scope: 'Effective Scope',
+          scopeValue: '{selected} selected, {excluded} excluded',
+          strategy: 'Run Strategy',
+          models: 'Probe Models',
+          fromPolicy: 'Defined by existing policies',
+          notApplicable: 'Not required',
+          remoteAction: 'Upstream Automation',
+          enabled: 'Enabled',
+          disabled: 'Disabled',
+          multiplierRule: 'Multiplier rule: health outranks price; a target in multiple groups uses the lowest multiplier; lower multipliers receive higher upstream priority. If a manual change is detected, automation stops and reports a conflict.',
+          multiplierOnlyRule: 'Multiplier-only rule: health state is ignored and no model probes run. Targets in multiple groups use the lowest multiplier. Disabling or unbinding restores the original priority; manual edits remain protected by conflict detection.'
+        },
+        back: 'Back',
+        next: 'Next',
+        save: 'Save Group Strategy'
       },
       probeUnavailableReasons: {
         credential_unavailable: 'Cannot securely obtain upstream credentials; probing unavailable',
@@ -834,12 +1108,14 @@ export default {
       },
       summary: {
         total: 'Probe Targets',
-        unconfigured: 'Not Configured'
+        unconfigured: 'Not Configured',
+        monitoredGroups: 'Monitored Groups',
+        priorityConflicts: 'Priority Conflicts'
       },
       stateLabels: {
         healthy: 'Healthy',
         degraded: 'Degraded',
-        suspended: 'Suspended',
+        suspended: 'Probe Paused',
         observing: 'Observing',
         recovering: 'Recovering',
         disabled: 'Disabled'
@@ -882,11 +1158,18 @@ export default {
         invalid_response: 'Invalid Response',
         unsupported: 'Unsupported',
         manual_disable: 'Manually Disabled',
-        manual_restore: 'Manually Restored'
+        manual_restore: 'Manually Restored',
+        policy_unmanaged_restore: 'Policy unbound; upstream target restored to its original state',
+        credential_unavailable: 'Upstream credentials cannot be obtained securely; probing is unavailable',
+        secure_verification_required: 'Upstream Root verification is required before the channel key can be read',
+        base_url_unavailable: 'No usable Base URL is available for probing',
+        model_unavailable: 'No probe model is available; configure a model first',
+        export_unavailable: 'The upstream account export endpoint is unavailable, so probe credentials cannot be obtained',
+        credentials_redacted: 'Upstream credentials are redacted and cannot be used for probing'
       },
       topActions: {
         runFlow: 'How it works',
-        policies: 'Probe Policies',
+        policies: 'Automation Policies',
         events: 'Probe Events'
       },
       events: {
@@ -918,34 +1201,59 @@ export default {
       remoteActions: {
         unsupported: 'Unsupported (no upstream call made)',
         skippedIndependentProbe: 'Skipped — auto remote action is not enabled',
+        skippedTargetConflict: 'An upstream manual change was detected; automatic overwrite stopped',
+        skippedTargetInitiallyDisabled: 'The target was already paused upstream and was not automatically enabled',
         sub2apiInactive: 'Sub2API account switched to inactive',
         sub2apiActive: 'Sub2API account switched to active',
         sub2apiInactiveFailed: 'Sub2API account switch to inactive failed',
         sub2apiActiveFailed: 'Sub2API account switch to active failed',
         newapiDisabled: 'NewAPI channel disabled',
+        newapiUpdateFailed: 'Failed to update the NewAPI channel weight or status',
         newapiWeight: 'NewAPI channel weight set to {weight}',
         other: '{action}'
       },
       policies: {
-        title: 'Probe Policies',
-        subtitle: 'Configure model probe targets, thresholds, and auto-degrade/restore behavior.',
+        title: 'Automation Policies',
+        subtitle: 'Configure model probing, auto-degradation, or multiplier-only priority behavior.',
         create: 'New Policy',
-        empty: 'No probe policies yet. Click "New Policy" to configure one.',
+        empty: 'No automation policies yet. Click "New Policy" to configure one.',
         enabled: 'Enabled',
         disabled: 'Disabled',
         enable: 'Enable',
         disable: 'Disable',
         edit: 'Edit',
+        delete: 'Delete policy',
+        deleteTitle: 'Delete Automation Policy',
+        deleteDescription: 'Delete "{name}"?',
+        deleteWarning: 'Its model targets and account/group assignments will also be removed. Historical probe records will be retained. This action cannot be undone.',
+        cancelDelete: 'Cancel',
+        confirmDelete: 'Delete Policy',
         remoteActionOn: 'Remote Action On',
         allGroupsScope: 'All groups',
-        modelTargetCount: '{count} model targets'
+        modelTargetCount: '{count} model targets',
+        strategyModes: {
+          health_probe: 'Health Probe',
+          multiplier_only: 'Multiplier Only'
+        },
+        multiplierOnlySummary: 'No probes; priority follows multiplier'
       },
       policyDrawer: {
-        createTitle: 'New Probe Policy',
-        editTitle: 'Edit Probe Policy',
+        createTitle: 'New Automation Policy',
+        editTitle: 'Edit Automation Policy',
         nameLabel: 'Policy Name',
         namePlaceholder: 'Enter policy name',
         enabledLabel: 'Enable this policy',
+        strategyModeLabel: 'Run Mode',
+        strategyModes: {
+          health_probe: {
+            title: 'Health Probe',
+            description: 'Probes, state machine, and optional actions'
+          },
+          multiplier_only: {
+            title: 'Multiplier Only',
+            description: 'Adjust priority only; never probe'
+          }
+        },
         ownGroupLabel: 'Policy Scope',
         ownGroupAllOption: 'All groups in current workspace',
         modelTargetsLabel: 'Model Probe Targets',
@@ -964,7 +1272,15 @@ export default {
         autoDegradeLabel: 'Auto Degrade',
         autoDegradeHelp: 'Automatically lower local weight or suspend a link once failures reach the threshold.',
         autoRemoteActionLabel: 'Auto Remote Action',
-        autoRemoteActionHelp: 'NewAPI: auto remote action updates the channel weight/status. Sub2API: auto remote action toggles the admin account active/inactive; priority is not auto-adjusted. In the current group-health independent probing path, Sub2API already supports automatic active/inactive switching by policy; the NewAPI target dimension does not implement remote actions yet and is only recorded as unsupported — it never actually calls upstream.',
+        autoRemoteActionHelp: 'NewAPI updates channel weight/status, while Sub2API toggles the admin account active/inactive. When disabled, health results are recorded without upstream calls.',
+        priorityModeLabel: 'Upstream Traffic Priority',
+        priorityModes: {
+          none: 'Keep Upstream Values',
+          multiplier: 'Sort by Group Multiplier'
+        },
+        priorityModeHelp: 'Multiplier sorting favors lower-cost upstream targets while they are healthy. Failed targets always degrade before price ordering applies.',
+        multiplierOnlySummaryTitle: 'Lower Multiplier, Higher Priority',
+        multiplierOnlySummary: 'About every 30 seconds, the scheduler reads current group multipliers and syncs upstream priority. It never resolves probe credentials, requests models, consumes probe budget, degrades health, or runs remote health actions. Manual priority edits stop automatic overwrites.',
         providerLabel: 'Model Provider',
         providerPlaceholder: 'Select a provider',
         providerMismatchWarning: 'This policy\'s existing model targets use different providers. Pick one provider above — saving will unify all model targets to the provider you select.',
@@ -982,7 +1298,8 @@ export default {
           observation: 'After a manual restore or an automatic recovery flow, the link enters an observation window — consecutive probe results here confirm whether it is actually stable again.',
           recoveryStep: 'During recovery, each successful probe raises local weight by this percentage step, instead of jumping straight to 100%.',
           autoDegrade: 'When enabled, probe results drive the health state machine and adjust local routing weight. When disabled, probe results are only recorded — state and weight never change automatically.',
-          autoRemoteAction: 'When enabled, supported upstream actions run when the state machine triggers degrade/recovery: Sub2API group-health targets toggle the admin account active/inactive without changing priority; NewAPI linked-channel probing can update channel weight/status. The current NewAPI target dimension is not implemented yet and is recorded as unsupported. When disabled, probes and state results are recorded without remote disable/restore actions.'
+          autoRemoteAction: 'When enabled, supported upstream actions run when the state machine triggers degrade/recovery: Sub2API toggles the admin account active/inactive, and NewAPI updates channel weight/status. When disabled, only probe and state results are recorded.',
+          priorityMode: 'Group multiplier sorting maps lower multipliers to higher upstream priority. Health tier outranks price; targets in multiple groups use the lowest multiplier; automation stops when it detects a manual priority change.'
         },
         runFlow: {
           buttonLabel: 'How it works',
@@ -1054,7 +1371,7 @@ export default {
         loadingModels: 'Fetching available models from upstream...',
         retryLoad: 'Retry',
         empty: 'No available models were found.',
-        selectHint: 'Select the models to test — multiple selection allowed.',
+        selectHint: 'The first model is selected by default. Select more models when needed.',
         startTest: 'Start Test',
         testing: 'Testing...',
         resultTitle: 'Test Results',
@@ -1072,6 +1389,7 @@ export default {
       },
       errors: {
         request: 'Operation failed. Please try again.',
+        unknown: 'Group health data is temporarily unavailable. Please try again.',
         network: 'Network error. Check your connection and try again.',
         notFound: 'Probe target not found or inaccessible.',
         noMatchingModels: 'Selected models do not match the current probe policy.',
@@ -1085,6 +1403,7 @@ export default {
         credentialsRedacted: 'Upstream credentials are redacted and cannot be used for probing.',
         modelListUnavailable: 'Could not fetch the upstream model list. Please try again later.',
         modelListInvalid: 'The upstream model list response format is not recognized.',
+        multiplierRequired: 'This group has no valid multiplier. Set it upstream before enabling multiplier sorting.',
         manualModelsRequired: 'Please select at least one model before starting the test.',
         policyNotFound: 'The selected policy does not exist or is not in the current workspace.'
       }
@@ -1227,6 +1546,7 @@ export default {
         invalidResponse: 'The upstream response could not be parsed.',
         tokenMissing: 'Login succeeded but no access token was returned.',
         detect: 'The platform could not be auto-detected. Choose a platform and try again.',
+        sub2APIBulkUpdateUnsupported: 'This Sub2API version does not support safe account field updates. Upgrade Sub2API and try again.',
         unknown: 'An unknown error occurred while connecting the upstream site.'
       }
     },
@@ -1258,6 +1578,8 @@ export default {
         type: 'Group Type',
         platform: 'Site Platform',
         currentMultiplier: 'Current Multiplier',
+        effectiveMultiplier: 'Converted Cost Multiplier',
+        multiplierFormula: 'Upstream {upstream} × recharge factor {recharge}',
         delta: 'Rise/Fall',
         updatedAt: 'Updated Time',
         actions: 'Actions'
@@ -1270,7 +1592,7 @@ export default {
         closeHistory: 'Close History',
         editType: 'Edit',
         closeEdit: 'Close Group Type Editor',
-        connect: 'Click to Connect',
+        connect: 'Configure Connection',
         closeConnect: 'Close connect dialog',
         saveConnect: 'Connect',
         cancel: 'Cancel',
@@ -1305,12 +1627,15 @@ export default {
       status: {
         loading: 'Loading group rates...',
         mapped: 'Connected',
+        pricingMapped: 'Pricing Source',
         unmapped: 'Not Connected',
         deleted: 'Deleted'
       },
       empty: {
         title: 'No group rates yet',
-        description: 'Synced upstream group multiplier data will appear here.'
+        description: 'Synced upstream group multiplier data will appear here.',
+        filteredTitle: 'No records match these filters',
+        filteredDescription: 'Change the status, search, type, or platform filter.'
       },
       history: {
         title: 'Multiplier History',
@@ -1331,8 +1656,8 @@ export default {
         typePlaceholder: 'Select group type'
       },
       connect: {
-        titleWithGroup: 'Connect {site} · {group}',
-        description: 'Choose one of your site groups to add this upstream group to its mapping.',
+        titleWithGroup: 'Configure {site} · {group}',
+        description: 'Let the system create both resources, or link resources that already exist.',
         ownGroupLabel: 'My Site Groups',
         ownGroupPlaceholder: 'Select my site groups',
         upstreamGroupLabel: 'Connected Group',
@@ -1342,8 +1667,8 @@ export default {
         upstreamMultiplierLabel: 'Upstream Multiplier',
         upstreamPlatformLabel: 'Platform',
         modeData: 'Data Stats',
-        modeReal: 'Real Connect',
-        realDescription: 'This will automatically create an API key on the upstream site and a forwarding account on your admin site.',
+        modeReal: 'Create Resources',
+        realDescription: 'Create an upstream Key/Token and an account or channel on the current admin site.',
         groupTypeLabel: 'Group Type',
         groupTypePlaceholder: 'Select group type',
         groupTypeOpenai: 'OpenAI',
@@ -1356,12 +1681,24 @@ export default {
         realConnecting: 'Creating connection...',
         realSuccess: 'Real connection created successfully',
         realFailed: 'Failed to create real connection',
-        modeBind: 'Manual Bind',
-        bindDescription: 'Select an existing upstream Key to bind to this group without creating new resources.',
-        bindSelectKey: 'Select Upstream Key',
-        bindKeysLoading: 'Loading key list...',
-        bindKeysEmpty: 'No keys available for this site',
-        bindFailed: 'Failed to bind'
+        modeBind: 'Use Existing Resources',
+        bindDescription: 'Link an existing upstream Key/Token and admin account/channel without taking ownership of them.',
+        bindSelectKey: 'Upstream Key / Token',
+        bindKeysLoading: 'Loading credentials for this group...',
+        bindKeysEmpty: 'No credentials are available for this upstream group',
+        bindSelectAdminGroup: 'Admin Group',
+        bindAdminGroupPlaceholder: 'Select the group containing the existing resource',
+        bindSelectAdminResource: 'Existing Account / Channel',
+        adminResourcesLoading: 'Loading admin resources...',
+        adminResourcesEmpty: 'No accounts or channels are available in this group',
+        adminResourcesFailed: 'Failed to load existing admin resources. Refresh and try again.',
+        resourceActive: 'Active',
+        resourceInactive: 'Inactive',
+        addToPricingMapping: 'Also use as a pricing source',
+        addToPricingMappingHint: 'Enabled by default. Turn it off to create only the traffic connection.',
+        submitManaged: 'Create and Connect',
+        submitExisting: 'Save Existing Link',
+        bindFailed: 'Failed to link existing resources'
       },
       disconnect: {
         action: 'Disconnect',
@@ -1371,6 +1708,8 @@ export default {
         unlinkOnlyHint: 'Only remove the local binding record, keep the upstream Key and Admin account',
         deleteAll: 'Delete Account & Key',
         deleteAllHint: 'Also delete the upstream Key and the Admin site forwarding account',
+        removePricingMapping: 'Also remove the pricing source',
+        removePricingMappingHint: 'Turn this off to keep the upstream group in pricing mappings.',
         confirm: 'Confirm',
         disconnecting: 'Disconnecting...',
         failed: 'Failed to disconnect'
@@ -1520,7 +1859,9 @@ export default {
     },
     mySites: {
       errors: {
-        invalidAutoPricingConfig: 'Invalid auto-pricing config: primary upstream not in linked upstreams, or min multiplier exceeds max.'
+        invalidAutoPricingConfig: 'Invalid auto-pricing config: primary upstream not in linked upstreams, or min multiplier exceeds max.',
+        connectionExists: 'A real connection already exists for this upstream group.',
+        managedDeleteOnly: 'Existing-resource links can only be unlinked locally; remote resources cannot be deleted.'
       }
     },
     tickets: {
@@ -1837,6 +2178,27 @@ export default {
       balanceWarningAmount: 'Trigger Amount (CNY)',
       notifyBots: 'Send Notifications To',
       customTemplate: 'Custom Template',
+      templateEditor: {
+        formatLabel: 'Template format',
+        formatHelp: 'The live preview uses sample values. Delivery is adapted to each notification channel\'s supported rich-text format.',
+        editor: 'Template content',
+        preview: 'Live preview',
+        previewTitle: 'Live notification template preview',
+        formats: {
+          text: 'Plain text',
+          markdown: 'Markdown',
+          html: 'HTML'
+        },
+        samples: {
+          siteName: 'Example upstream',
+          balance: '8.50',
+          threshold: '10.00',
+          groupName: 'Default group',
+          oldRate: '1.0000',
+          newRate: '1.1200',
+          changeDirection: 'increased'
+        }
+      },
       balanceTemplateVars: '(Variables: {siteName}, {balance}, {threshold})',
       multiplierTemplateVars: '(Variables: {siteName}, {groupName}, {oldRate}, {newRate}, {changeDirection})',
       unnamedBot: 'Unnamed Bot',
@@ -1852,12 +2214,18 @@ export default {
       pricingAmount: 'Adjustment Amount',
       botNameLabel: 'Bot Name',
       botNameDingtalkPlaceholder: 'e.g., DingTalk Main',
+      botNameWecomPlaceholder: 'e.g., WeCom Main',
+      botNameQQPlaceholder: 'e.g., QQ Direct Alerts',
       botNameFeishuPlaceholder: 'e.g., Feishu Main',
       botNameTelegramPlaceholder: 'e.g., TG Main',
       addDingtalkBot: 'Add DingTalk Bot',
+      addWecomBot: 'Add WeCom Bot',
+      addQQBot: 'Add QQ Bot',
       addFeishuBot: 'Add Feishu Bot',
       addTelegramBot: 'Add TG Bot',
       emptyDingtalk: 'No DingTalk bots configured',
+      emptyWecom: 'No WeCom bots configured',
+      emptyQQ: 'No QQ bots configured',
       emptyFeishu: 'No Feishu bots configured',
       emptyTelegram: 'No Telegram bots configured',
       tabs: {
@@ -1895,15 +2263,26 @@ export default {
         },
         channels: {
           title: 'Notification Channels',
-          description: 'Configure third-party channels for receiving system alerts (e.g., DingTalk, Telegram, Feishu).',
+          description: 'Configure third-party channels for receiving system alerts (e.g., DingTalk, WeCom, QQ, Telegram, Feishu).',
           dingtalk: 'DingTalk Bot',
           dingtalkHelp: 'Configure Webhook and Secret for DingTalk group bot.',
+          wecom: 'WeCom Bot',
+          wecomHelp: 'Configure the Webhook for a WeCom group bot. No signing secret is required.',
+          qq: 'QQ Bot',
+          qqHelp: 'Configure the app credentials and recipient user OpenID for an official QQ bot.',
           feishu: 'Feishu Bot',
           feishuHelp: 'Configure Webhook and Secret for Feishu group bot.',
           telegram: 'Telegram Bot',
           telegramHelp: 'Configure Bot Token and Chat ID for Telegram.',
           webhookUrl: 'Webhook URL',
           secret: 'Secret',
+          appId: 'AppID',
+          appIdPlaceholder: 'Enter the bot AppID',
+          appSecret: 'AppSecret',
+          appSecretPlaceholder: 'Enter the bot AppSecret',
+          userOpenId: 'User OpenID',
+          userOpenIdPlaceholder: 'Enter the recipient user openid',
+          userOpenIdHelp: 'Add the user to the message-list sandbox, have them scan and message the bot, then read it from the C2C_MESSAGE_CREATE event.',
           botToken: 'Bot Token',
           chatId: 'Chat ID',
           proxyUrl: 'Proxy URL (Optional)',
@@ -1914,8 +2293,10 @@ export default {
           testConnectionSuccess: 'Sent Successfully'
         },
         templates: {
-          balanceTemplatePlaceholder: 'e.g., [Warning] {siteName} balance (CNY) is below {threshold}, current is {balance}.',
-          multiplierTemplatePlaceholder: 'e.g., [Rate Change] {siteName} {groupName} changed from {oldRate}x to {newRate}x.'
+          balanceDefaultTemplate: '🔴 **Balance warning**\n\n🏷️ **Site:** {siteName}\n💰 **Current balance:** CNY {balance}\n⚠️ **Warning threshold:** CNY {threshold}\n\nPlease review and recharge the upstream account to avoid service interruption.',
+          multiplierDefaultTemplate: '🟠 **Multiplier change warning**\n\n🏷️ **Site:** {siteName}\n📦 **Group:** {groupName}\n📊 **Rate:** {oldRate}x → **{newRate}x** ({changeDirection})\n\n🔎 Review the cost change and confirm whether downstream pricing needs adjustment.',
+          balanceTemplatePlaceholder: 'e.g., 🔴 {siteName} has CNY {balance} remaining, below CNY {threshold}.',
+          multiplierTemplatePlaceholder: 'e.g., 🟠 {siteName} / {groupName}: {oldRate}x → {newRate}x.'
         }
       },
       errors: {
@@ -1924,6 +2305,7 @@ export default {
         unknown: 'An unknown error occurred while testing the notification channel.',
         invalidChannel: 'The notification channel type is invalid.',
         missingWebhook: 'Enter the robot webhook URL first.',
+        missingQQConfig: 'Enter the QQ bot AppID, AppSecret, and User OpenID first.',
         missingTelegramConfig: 'Enter the Telegram Bot Token and Chat ID first.',
         sendFailed: 'Failed to send the test message. Check the robot configuration and network connectivity.'
       },

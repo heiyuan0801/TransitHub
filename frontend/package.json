@@ -1,6 +1,6 @@
 {
   "name": "@transithub/frontend",
-  "version": "0.1.10",
+  "version": "0.1.15",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,8 +13,10 @@
     "@vueuse/core": "^14.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "echarts": "^6.1.0",
     "gsap": "^3.12.5",
     "lucide-vue-next": "^0.577.0",
+    "marked": "^18.0.7",
     "tailwind-merge": "^2.6.0",
     "vue": "^3.5.13",
     "vue-i18n": "^9.14.4",

@@ -15,8 +15,8 @@ import (
 type healthRepository interface {
 	ListPolicies(ctx context.Context, userID string, adminAccountID string) ([]Policy, error)
 	GetPolicy(ctx context.Context, id string, userID string, adminAccountID string) (*Policy, error)
-	UpsertPolicy(ctx context.Context, p Policy) error
-	ReplaceModelTargets(ctx context.Context, policyID string, targets []ModelTarget) error
+	SavePolicyWithTargets(ctx context.Context, p Policy, targets []ModelTarget) error
+	DeletePolicy(ctx context.Context, id string, userID string, adminAccountID string) (bool, error)
 	ListStatesByWorkspace(ctx context.Context, userID string, adminAccountID string) ([]ConnectionHealthState, error)
 	ListStatesByConnection(ctx context.Context, connectionID string) ([]ConnectionHealthState, error)
 	GetState(ctx context.Context, connectionID string, modelName string) (*ConnectionHealthState, error)
@@ -24,30 +24,50 @@ type healthRepository interface {
 	InsertEvent(ctx context.Context, e ConnectionHealthEvent) error
 	ListEventsByConnection(ctx context.Context, connectionID string, userID string, adminAccountID string, limit int) ([]ConnectionHealthEvent, error)
 	ListRecentEventsByWorkspace(ctx context.Context, userID string, adminAccountID string, limit int) ([]ConnectionHealthEvent, error)
-	CountProbesToday(ctx context.Context, userID string, adminAccountID string, dayStart time.Time) (int, error)
+	CountFailureEventsSince(ctx context.Context, userID string, adminAccountID string, since time.Time) (int, error)
+	CountProbesToday(ctx context.Context, userID string, adminAccountID string, policyID string, dayStart time.Time) (int, error)
+	TryConsumeProbeBudget(ctx context.Context, userID string, adminAccountID string, policyID string, dayStart time.Time, limit int) (bool, error)
+	TryAcquireSchedulerLease(ctx context.Context) (release func(), acquired bool, err error)
+	AcquireTargetLease(ctx context.Context, targetID string) (release func(), err error)
 	ListEnabledPolicies(ctx context.Context) ([]Policy, error)
 	ReplacePolicyAssignments(ctx context.Context, userID string, adminAccountID string, targetID string, policyIDs []string) error
 	ListPolicyAssignmentsForTarget(ctx context.Context, userID string, adminAccountID string, targetID string) ([]PolicyAssignment, error)
 	ListPolicyAssignmentsByWorkspace(ctx context.Context, userID string, adminAccountID string) ([]PolicyAssignment, error)
 	ListAllPolicyAssignments(ctx context.Context) ([]PolicyAssignment, error)
+	ReplaceGroupPolicyConfiguration(ctx context.Context, userID string, adminAccountID string, adminGroupID string, adminGroupName string, policyIDs []string, excludedTargetIDs []string, groupTargetIDs []string) error
+	CreatePolicyAndReplaceGroupConfiguration(ctx context.Context, policy Policy, targets []ModelTarget, adminGroupID string, adminGroupName string, policyIDs []string, excludedTargetIDs []string, groupTargetIDs []string) error
+	ListGroupPolicyAssignmentsByWorkspace(ctx context.Context, userID string, adminAccountID string) ([]GroupPolicyAssignment, error)
+	ListAllGroupPolicyAssignments(ctx context.Context) ([]GroupPolicyAssignment, error)
+	ListGroupTargetExclusionsByWorkspace(ctx context.Context, userID string, adminAccountID string) ([]GroupTargetExclusion, error)
+	ListAllGroupTargetExclusions(ctx context.Context) ([]GroupTargetExclusion, error)
+	ListPrioritySyncStates(ctx context.Context, userID string, adminAccountID string) ([]PrioritySyncState, error)
+	ListAllPrioritySyncStates(ctx context.Context) ([]PrioritySyncState, error)
+	UpsertPrioritySyncState(ctx context.Context, state PrioritySyncState) error
+	DeletePrioritySyncState(ctx context.Context, userID string, adminAccountID string, targetID string) error
+	GetTargetActionState(ctx context.Context, userID string, adminAccountID string, targetID string) (*TargetActionState, error)
+	ListTargetActionStates(ctx context.Context, userID string, adminAccountID string) ([]TargetActionState, error)
+	ListAllTargetActionStates(ctx context.Context) ([]TargetActionState, error)
+	UpsertTargetActionState(ctx context.Context, state TargetActionState) error
+	DeleteTargetActionState(ctx context.Context, userID string, adminAccountID string, targetID string) error
 	EnsureSchema(ctx context.Context) error
 }
 
 // Service 组装 connection_health 模块的全部业务逻辑：聚合查询、策略管理、手动动作、
 // 真实探活执行。所有对外可见字段都不含 upstream_key，符合任务书的敏感信息约束。
 type Service struct {
-	repo           healthRepository
-	mySites        MySitesReader
-	sites          SiteLookup
-	accounts       AdminAccountResolver
-	dispatcher     RemoteActionRunner
-	probeRunner    *RealProbeRunner
-	modelDiscovery *ModelDiscoveryRunner
-	platformGroups PlatformGroupReader
+	repo            healthRepository
+	mySites         MySitesReader
+	sites           SiteLookup
+	accounts        AdminAccountResolver
+	dispatcher      RemoteActionRunner
+	probeRunner     *RealProbeRunner
+	modelDiscovery  *ModelDiscoveryRunner
+	platformGroups  PlatformGroupReader
+	priorityActions TargetPriorityActioner
 }
 
 func NewService(repo *Repository, mySites MySitesReader, sites SiteLookup, platform PlatformActioner) *Service {
-	return &Service{
+	service := &Service{
 		repo:           repo,
 		mySites:        mySites,
 		sites:          sites,
@@ -55,6 +75,12 @@ func NewService(repo *Repository, mySites MySitesReader, sites SiteLookup, platf
 		probeRunner:    NewRealProbeRunner(),
 		modelDiscovery: NewModelDiscoveryRunner(),
 	}
+	// 真实 PlatformService 同时实现优先级更新能力；测试或旧注入器如果尚未实现，倍率策略会
+	// 安全跳过远端写入，不影响既有探活/降级流程。
+	if actions, ok := platform.(TargetPriorityActioner); ok {
+		service.priorityActions = actions
+	}
+	return service
 }
 
 func (s *Service) EnsureSchema(ctx context.Context) error {
@@ -140,6 +166,82 @@ type OverviewResponse struct {
 	Disabled         int         `json:"disabled"`
 	Unconfigured     int         `json:"unconfigured"`
 	RecentEvents     []EventView `json:"recentEvents"`
+}
+
+// StoredSummaryResponse 是工作台使用的轻量健康摘要。它只聚合本地状态、事件和动作接管表，
+// 不读取上游分组，也不会触发模型发现或真实探活，因此可以安全地随工作台刷新。
+type StoredSummaryResponse struct {
+	TotalTargets        int        `json:"totalTargets"`
+	HealthyTargets      int        `json:"healthyTargets"`
+	AttentionTargets    int        `json:"attentionTargets"`
+	SuspendedTargets    int        `json:"suspendedTargets"`
+	ManagedTargets      int        `json:"managedTargets"`
+	RecentFailureEvents int        `json:"recentFailureEvents"`
+	LastProbeAt         *time.Time `json:"lastProbeAt,omitempty"`
+}
+
+// StoredSummary 读取当前 workspace 已落库的健康状态。一个目标可能包含多个模型状态，
+// 这里只按目标去重并采用最高风险状态，避免多模型配置让工作台数字失真。
+func (s *Service) StoredSummary(ctx context.Context, userID string) (StoredSummaryResponse, error) {
+	adminAccountID, err := s.currentAdminAccountID(ctx, userID)
+	if err != nil {
+		return StoredSummaryResponse{}, err
+	}
+
+	states, err := s.repo.ListStatesByWorkspace(ctx, userID, adminAccountID)
+	if err != nil {
+		return StoredSummaryResponse{}, err
+	}
+	actionStates, err := s.repo.ListTargetActionStates(ctx, userID, adminAccountID)
+	if err != nil {
+		return StoredSummaryResponse{}, err
+	}
+	recentFailures, err := s.repo.CountFailureEventsSince(ctx, userID, adminAccountID, time.Now().Add(-24*time.Hour))
+	if err != nil {
+		return StoredSummaryResponse{}, err
+	}
+
+	const (
+		targetHealthy = iota + 1
+		targetAttention
+		targetSuspended
+	)
+	targetRisk := make(map[string]int)
+	var lastProbeAt *time.Time
+	for _, state := range states {
+		risk := targetHealthy
+		switch state.State {
+		case StateSuspended, StateDisabled:
+			risk = targetSuspended
+		case StateDegraded, StateObserving, StateRecovering:
+			risk = targetAttention
+		}
+		if risk > targetRisk[state.ConnectionID] {
+			targetRisk[state.ConnectionID] = risk
+		}
+		if state.LastProbeAt != nil && (lastProbeAt == nil || state.LastProbeAt.After(*lastProbeAt)) {
+			probeAt := *state.LastProbeAt
+			lastProbeAt = &probeAt
+		}
+	}
+
+	response := StoredSummaryResponse{
+		TotalTargets:        len(targetRisk),
+		ManagedTargets:      len(actionStates),
+		RecentFailureEvents: recentFailures,
+		LastProbeAt:         lastProbeAt,
+	}
+	for _, risk := range targetRisk {
+		switch risk {
+		case targetSuspended:
+			response.SuspendedTargets++
+		case targetAttention:
+			response.AttentionTargets++
+		default:
+			response.HealthyTargets++
+		}
+	}
+	return response, nil
 }
 
 // Groups 按「我的分组 -> 对接链路 -> 模型」聚合当前 workspace 的健康状态。
@@ -233,7 +335,7 @@ func toModelHealth(modelName string, st ConnectionHealthState) ModelHealth {
 	updatedAt := st.UpdatedAt
 	return ModelHealth{
 		ModelName:            modelName,
-		Configured:           true,
+		Configured:           !isCredentialUnavailableReason(st.LastErrorKey),
 		State:                st.State,
 		CurrentWeight:        st.CurrentWeight,
 		ConsecutiveFailures:  st.ConsecutiveFailures,
@@ -249,46 +351,102 @@ func toModelHealth(modelName string, st ConnectionHealthState) ModelHealth {
 	}
 }
 
-// Overview 汇总 workspace 下的健康状态计数和最近事件，供大屏顶部卡片使用。
+// Overview 汇总当前 admin workspace 下已纳入策略的账号/渠道，而不是继续统计旧
+// real_connections。响应字段保持不变，旧客户端仍可读取；旧链路接口 /groups 继续保留。
 func (s *Service) Overview(ctx context.Context, userID string) (OverviewResponse, error) {
 	adminAccountID, err := s.currentAdminAccountID(ctx, userID)
 	if err != nil {
 		return OverviewResponse{}, err
 	}
 
-	groups, err := s.Groups(ctx, userID)
+	// 兼容只注入旧依赖的调用方/测试：新平台读取器未配置时仍按 real_connections 汇总。
+	// 正常 HTTP 服务已注入 platformGroups，因此生产页面使用下面的 admin 目标主语义。
+	if s.platformGroups == nil {
+		legacyGroups, err := s.Groups(ctx, userID)
+		if err != nil {
+			return OverviewResponse{}, err
+		}
+		resp := OverviewResponse{}
+		for _, group := range legacyGroups {
+			for _, connection := range group.Connections {
+				resp.TotalConnections++
+				if len(connection.Models) == 0 {
+					resp.Unconfigured++
+					continue
+				}
+				for _, model := range connection.Models {
+					accumulateOverviewState(&resp, model.State)
+				}
+			}
+		}
+		events, err := s.repo.ListRecentEventsByWorkspace(ctx, userID, adminAccountID, 50)
+		if err != nil {
+			return OverviewResponse{}, err
+		}
+		resp.RecentEvents = toEventViews(events)
+		return resp, nil
+	}
+
+	groups, err := s.AdminGroups(ctx, userID)
 	if err != nil {
 		return OverviewResponse{}, err
 	}
 
 	resp := OverviewResponse{}
-	for _, g := range groups {
-		for _, conn := range g.Connections {
-			resp.TotalConnections++
-			if len(conn.Models) == 0 {
-				resp.Unconfigured++
+	type overviewTarget struct {
+		probeAvailable bool
+		models         map[string]ModelHealth
+		unprobed       map[string]struct{}
+	}
+	targets := make(map[string]*overviewTarget)
+	for _, group := range groups {
+		for _, account := range group.Accounts {
+			if !account.HasEnabledPolicy {
 				continue
 			}
-			for _, m := range conn.Models {
-				switch m.State {
-				case StateHealthy:
-					resp.Healthy++
-				case StateDegraded:
-					resp.Degraded++
-				case StateSuspended:
-					resp.Suspended++
-				case StateObserving:
-					resp.Observing++
-				case StateRecovering:
-					resp.Recovering++
-				case StateDisabled:
-					resp.Disabled++
+			target := targets[account.TargetID]
+			if target == nil {
+				target = &overviewTarget{
+					probeAvailable: true,
+					models:         make(map[string]ModelHealth),
+					unprobed:       make(map[string]struct{}),
+				}
+				targets[account.TargetID] = target
+			}
+			target.probeAvailable = target.probeAvailable && account.ProbeAvailable
+			for _, model := range account.ModelHealth {
+				target.models[model.ModelName] = model
+				delete(target.unprobed, model.ModelName)
+			}
+			for _, model := range account.UnprobedModels {
+				if _, hasState := target.models[model.ModelName]; !hasState {
+					target.unprobed[model.ModelName] = struct{}{}
 				}
 			}
 		}
 	}
+	for _, target := range targets {
+		resp.TotalConnections++
+		if !target.probeAvailable {
+			resp.Unconfigured++
+			continue
+		}
+		if len(target.models) == 0 && len(target.unprobed) == 0 {
+			resp.Unconfigured++
+			continue
+		}
+		resp.Unconfigured += len(target.unprobed)
+		for _, model := range target.models {
+			if isCredentialUnavailableReason(model.LastErrorKey) {
+				resp.Unconfigured++
+				continue
+			}
+			accumulateOverviewState(&resp, model.State)
+		}
+	}
 
-	events, err := s.repo.ListRecentEventsByWorkspace(ctx, userID, adminAccountID, 50)
+	// 先拉取较宽窗口再过滤，避免已解绑目标的高频历史事件占满 LIMIT，导致当前有效事件为空。
+	events, err := s.repo.ListRecentEventsByWorkspace(ctx, userID, adminAccountID, 500)
 	if err != nil {
 		return OverviewResponse{}, err
 	}
@@ -296,8 +454,28 @@ func (s *Service) Overview(ctx context.Context, userID string) (OverviewResponse
 	if err != nil {
 		return OverviewResponse{}, err
 	}
+	if len(events) > 50 {
+		events = events[:50]
+	}
 	resp.RecentEvents = toEventViews(events)
 	return resp, nil
+}
+
+func accumulateOverviewState(resp *OverviewResponse, state State) {
+	switch state {
+	case StateHealthy:
+		resp.Healthy++
+	case StateDegraded:
+		resp.Degraded++
+	case StateSuspended:
+		resp.Suspended++
+	case StateObserving:
+		resp.Observing++
+	case StateRecovering:
+		resp.Recovering++
+	case StateDisabled:
+		resp.Disabled++
+	}
 }
 
 // filterToAssignedTargetEvents 过滤掉「admin target 维度但该 target 当前没有被分配任何策略」的
@@ -314,11 +492,64 @@ func (s *Service) filterToAssignedTargetEvents(ctx context.Context, userID strin
 	for _, a := range assignments {
 		assignedTargets[a.TargetID] = struct{}{}
 	}
+	groupAssignments, err := s.repo.ListGroupPolicyAssignmentsByWorkspace(ctx, userID, adminAccountID)
+	if err != nil {
+		return nil, err
+	}
+	groupExclusions, err := s.repo.ListGroupTargetExclusionsByWorkspace(ctx, userID, adminAccountID)
+	if err != nil {
+		return nil, err
+	}
+	groupIDByName := make(map[string][]string)
+	groupIDsByPolicy := make(map[string][]string)
+	assignedGroupIDs := make(map[string]struct{})
+	for _, assignment := range groupAssignments {
+		groupIDByName[assignment.AdminGroupName] = append(groupIDByName[assignment.AdminGroupName], assignment.AdminGroupID)
+		groupIDsByPolicy[assignment.PolicyID] = append(groupIDsByPolicy[assignment.PolicyID], assignment.AdminGroupID)
+		assignedGroupIDs[assignment.AdminGroupID] = struct{}{}
+	}
+	excluded := make(map[string]map[string]bool)
+	for _, exclusion := range groupExclusions {
+		if excluded[exclusion.AdminGroupID] == nil {
+			excluded[exclusion.AdminGroupID] = make(map[string]bool)
+		}
+		excluded[exclusion.AdminGroupID][exclusion.TargetID] = true
+	}
 
 	out := make([]ConnectionHealthEvent, 0, len(events))
 	for _, e := range events {
 		if _, ok := parseTargetID(e.ConnectionID); ok {
-			if _, assigned := assignedTargets[e.ConnectionID]; !assigned {
+			if e.Result == "policy_unmanaged_restore" {
+				// This event is emitted after the final assignment is removed. Filtering it by
+				// current assignments would make the automatic upstream restore impossible to audit.
+				out = append(out, e)
+				continue
+			}
+			_, explicitlyAssigned := assignedTargets[e.ConnectionID]
+			groupAssigned := false
+			candidateGroupIDs := groupIDByName[e.OwnGroupName]
+			if e.AdminGroupID != "" {
+				if _, stillAssigned := assignedGroupIDs[e.AdminGroupID]; stillAssigned {
+					candidateGroupIDs = []string{e.AdminGroupID}
+				} else if e.PolicyID != "" {
+					// Older scheduler versions could stamp the target's first group even when
+					// this event's policy came from another group. Fall back to the persisted
+					// policy ID so those historical events remain visible after an unrelated
+					// group is unbound.
+					candidateGroupIDs = groupIDsByPolicy[e.PolicyID]
+				} else {
+					candidateGroupIDs = nil
+				}
+			}
+			for _, groupID := range candidateGroupIDs {
+				// 同名分组可能同时包含一个目标；只要其中一个已绑定分组没有排除该目标，
+				// 事件就仍属于有效监控范围，不能被另一个同名分组的排除项误过滤。
+				if !excluded[groupID][e.ConnectionID] {
+					groupAssigned = true
+					break
+				}
+			}
+			if !explicitlyAssigned && !groupAssigned {
 				continue
 			}
 		}
@@ -416,6 +647,8 @@ type PolicyInput struct {
 	RecoveryStepPercent     int                `json:"recoveryStepPercent"`
 	AutoDegradeEnabled      bool               `json:"autoDegradeEnabled"`
 	AutoRemoteActionEnabled bool               `json:"autoRemoteActionEnabled"`
+	PriorityMode            string             `json:"priorityMode"`
+	StrategyMode            string             `json:"strategyMode"`
 	DailyProbeBudget        int                `json:"dailyProbeBudget"`
 	ModelTargets            []ModelTargetInput `json:"modelTargets"`
 }
@@ -450,38 +683,18 @@ func (s *Service) SavePolicy(ctx context.Context, userID string, in PolicyInput)
 		if existing == nil {
 			return Policy{}, requestError(ErrorNotFound)
 		}
+		// 旧版前端不会发送 strategyMode。更新已有策略时保留原模式，避免滚动升级期间
+		// 旧客户端把 multiplier_only 静默改回探活模式。
+		if strings.TrimSpace(in.StrategyMode) == "" {
+			in.StrategyMode = existing.StrategyMode
+		}
 	}
 
-	policy := Policy{
-		ID: id, UserID: userID, AdminAccountID: adminAccountID, Name: strings.TrimSpace(in.Name), Enabled: in.Enabled,
-		OwnGroupID: in.OwnGroupID, OwnGroupName: in.OwnGroupName, ModelPattern: defaultString(in.ModelPattern, "*"),
-		ProbeMode: "real_model", ProbeIntervalSeconds: defaultInt(in.ProbeIntervalSeconds, 60),
-		FailureThreshold: defaultInt(in.FailureThreshold, 3), SuccessThreshold: defaultInt(in.SuccessThreshold, 2),
-		CooldownSeconds: defaultInt(in.CooldownSeconds, 300), ObservationSeconds: defaultInt(in.ObservationSeconds, 300),
-		RecoveryStepPercent: defaultInt(in.RecoveryStepPercent, 25), AutoDegradeEnabled: in.AutoDegradeEnabled,
-		AutoRemoteActionEnabled: in.AutoRemoteActionEnabled, DailyProbeBudget: defaultInt(in.DailyProbeBudget, 1000),
-	}
-	if err := s.repo.UpsertPolicy(ctx, policy); err != nil {
+	policy, targets, err := buildPolicyAndTargets(userID, adminAccountID, id, in)
+	if err != nil {
 		return Policy{}, err
 	}
-
-	targets := make([]ModelTarget, 0, len(in.ModelTargets))
-	for _, t := range in.ModelTargets {
-		targetID := strings.TrimSpace(t.ID)
-		if targetID == "" {
-			generated, genErr := newID()
-			if genErr != nil {
-				return Policy{}, genErr
-			}
-			targetID = generated
-		}
-		targets = append(targets, ModelTarget{
-			ID: targetID, PolicyID: id, UserID: userID, AdminAccountID: adminAccountID,
-			ModelName: strings.TrimSpace(t.ModelName), ProviderFamily: t.ProviderFamily, Enabled: t.Enabled,
-			ProbePrompt: t.ProbePrompt, MaxProbeTokens: defaultInt(t.MaxProbeTokens, 1),
-		})
-	}
-	if err := s.repo.ReplaceModelTargets(ctx, id, targets); err != nil {
+	if err := s.repo.SavePolicyWithTargets(ctx, policy, targets); err != nil {
 		return Policy{}, err
 	}
 
@@ -493,6 +706,89 @@ func (s *Service) SavePolicy(ctx context.Context, userID string, in PolicyInput)
 		return Policy{}, requestError(ErrorNotFound)
 	}
 	return *saved, nil
+}
+
+// DeletePolicy 删除当前 workspace 下的一条策略。Repository 会在同一事务中清理策略的
+// 模型目标、账号/分组分配和预算计数；历史探活事件保留，便于后续审计已发生的动作。
+func (s *Service) DeletePolicy(ctx context.Context, userID string, id string) error {
+	adminAccountID, err := s.currentAdminAccountID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	deleted, err := s.repo.DeletePolicy(ctx, strings.TrimSpace(id), userID, adminAccountID)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return requestError(ErrorNotFound)
+	}
+	return nil
+}
+
+func buildPolicyAndTargets(userID string, adminAccountID string, id string, in PolicyInput) (Policy, []ModelTarget, error) {
+	strategyMode := normalizeStrategyMode(in.StrategyMode)
+	policy := Policy{
+		ID: id, UserID: userID, AdminAccountID: adminAccountID, Name: strings.TrimSpace(in.Name), Enabled: in.Enabled,
+		OwnGroupID: in.OwnGroupID, OwnGroupName: in.OwnGroupName, ModelPattern: defaultString(in.ModelPattern, "*"),
+		ProbeMode: "real_model", ProbeIntervalSeconds: defaultInt(in.ProbeIntervalSeconds, 60),
+		FailureThreshold: defaultInt(in.FailureThreshold, 3), SuccessThreshold: defaultInt(in.SuccessThreshold, 2),
+		CooldownSeconds: defaultInt(in.CooldownSeconds, 300), ObservationSeconds: defaultInt(in.ObservationSeconds, 300),
+		RecoveryStepPercent: defaultInt(in.RecoveryStepPercent, 25), AutoDegradeEnabled: in.AutoDegradeEnabled,
+		AutoRemoteActionEnabled: in.AutoDegradeEnabled && in.AutoRemoteActionEnabled, PriorityMode: normalizePriorityMode(in.PriorityMode),
+		StrategyMode:     strategyMode,
+		DailyProbeBudget: defaultInt(in.DailyProbeBudget, 1000),
+	}
+	if strategyMode == StrategyModeMultiplierOnly {
+		// 仅倍率策略不拥有任何探活行为。即使错误或旧客户端同时提交了探活字段，也在服务端
+		// 强制关闭并丢弃模型目标，保证不会解析凭据、消耗预算或触发健康状态机。
+		policy.AutoDegradeEnabled = false
+		policy.AutoRemoteActionEnabled = false
+		policy.PriorityMode = PriorityModeMultiplier
+		policy.ModelTargets = []ModelTarget{}
+		return policy, []ModelTarget{}, nil
+	}
+	targets := make([]ModelTarget, 0, len(in.ModelTargets))
+	for _, t := range in.ModelTargets {
+		targetID := strings.TrimSpace(t.ID)
+		if targetID == "" {
+			generated, genErr := newID()
+			if genErr != nil {
+				return Policy{}, nil, genErr
+			}
+			targetID = generated
+		}
+		targets = append(targets, ModelTarget{
+			ID: targetID, PolicyID: id, UserID: userID, AdminAccountID: adminAccountID,
+			ModelName: strings.TrimSpace(t.ModelName), ProviderFamily: t.ProviderFamily, Enabled: t.Enabled,
+			ProbePrompt: t.ProbePrompt, MaxProbeTokens: defaultInt(t.MaxProbeTokens, 1),
+		})
+	}
+	policy.ModelTargets = targets
+	return policy, targets, nil
+}
+
+func normalizePriorityMode(mode string) string {
+	if strings.TrimSpace(mode) == PriorityModeMultiplier {
+		return PriorityModeMultiplier
+	}
+	return PriorityModeNone
+}
+
+func normalizeStrategyMode(mode string) string {
+	if strings.TrimSpace(mode) == StrategyModeMultiplierOnly {
+		return StrategyModeMultiplierOnly
+	}
+	return StrategyModeHealthProbe
+}
+
+func policySupportsProbing(policy Policy) bool {
+	return normalizeStrategyMode(policy.StrategyMode) == StrategyModeHealthProbe
+}
+
+// policyRemoteActionEnabled 是自动接管上游状态的统一有效判定。自动降级关闭时状态机不会
+// 产生可靠的降级/恢复决策，因此单独开启远端动作属于无效组合，保存和运行时都按关闭处理。
+func policyRemoteActionEnabled(policy Policy) bool {
+	return policy.AutoDegradeEnabled && policy.AutoRemoteActionEnabled
 }
 
 // ProbeConnectionInput 是手动探活接口的可选请求体。Models 为空（或请求体整体缺省）时
@@ -604,7 +900,7 @@ func (s *Service) DisableConnection(ctx context.Context, userID string, connecti
 		if err := s.repo.UpsertState(ctx, st); err != nil {
 			return err
 		}
-		s.recordEvent(ctx, *conn, st.ModelName, "manual_disable", string(fromState), string(StateDisabled), nil, "", "", remoteAction)
+		s.recordEvent(ctx, *conn, "", st.ModelName, "manual_disable", string(fromState), string(StateDisabled), nil, "", "", remoteAction)
 	}
 	return nil
 }
@@ -652,7 +948,7 @@ func (s *Service) RestoreConnection(ctx context.Context, userID string, connecti
 		if err := s.repo.UpsertState(ctx, st); err != nil {
 			return err
 		}
-		s.recordEvent(ctx, *conn, st.ModelName, "manual_restore", string(fromState), string(StateObserving), nil, "", "", remoteAction)
+		s.recordEvent(ctx, *conn, "", st.ModelName, "manual_restore", string(fromState), string(StateObserving), nil, "", "", remoteAction)
 	}
 	return nil
 }
@@ -675,12 +971,12 @@ func (s *Service) probeOnce(ctx context.Context, conn my_sites.RealConnection, p
 		current = &defaultState
 	}
 
-	dayStart := time.Now().Truncate(24 * time.Hour)
-	probeCount, err := s.repo.CountProbesToday(ctx, policy.UserID, policy.AdminAccountID, dayStart)
+	dayStart := probeBudgetDayStart(time.Now())
+	allowed, err := s.repo.TryConsumeProbeBudget(ctx, policy.UserID, policy.AdminAccountID, policy.ID, dayStart, probeBudgetLimit(policy))
 	if err != nil {
 		return nil, err
 	}
-	if probeCount >= policy.DailyProbeBudget {
+	if !allowed {
 		return current, nil
 	}
 
@@ -749,7 +1045,7 @@ func (s *Service) probeOnce(ctx context.Context, conn my_sites.RealConnection, p
 	if err := s.repo.UpsertState(ctx, next); err != nil {
 		return nil, err
 	}
-	s.recordEvent(ctx, conn, target.ModelName, string(outcome.Result), string(current.State), string(next.State), &latencyMs, next.LastErrorKey, next.LastErrorDetail, remoteAction)
+	s.recordEvent(ctx, conn, policy.ID, target.ModelName, string(outcome.Result), string(current.State), string(next.State), &latencyMs, next.LastErrorKey, next.LastErrorDetail, remoteAction)
 
 	return &next, nil
 }
@@ -775,14 +1071,14 @@ func (s *Service) defaultState(conn my_sites.RealConnection, modelName string) C
 	}
 }
 
-func (s *Service) recordEvent(ctx context.Context, conn my_sites.RealConnection, modelName string, result string, fromState string, toState string, latencyMs *int, errorKey string, errorDetail string, remoteAction string) {
+func (s *Service) recordEvent(ctx context.Context, conn my_sites.RealConnection, policyID string, modelName string, result string, fromState string, toState string, latencyMs *int, errorKey string, errorDetail string, remoteAction string) {
 	id, err := newID()
 	if err != nil {
 		log.Printf("[connection-health] generate event id failed: %v", err)
 		return
 	}
 	event := ConnectionHealthEvent{
-		ID: id, ConnectionID: conn.ID, ModelName: modelName, UserID: conn.UserID, AdminAccountID: conn.WorkspaceAdminAccountID,
+		ID: id, ConnectionID: conn.ID, ModelName: modelName, UserID: conn.UserID, AdminAccountID: conn.WorkspaceAdminAccountID, PolicyID: policyID,
 		UpstreamSiteID: conn.UpstreamSiteID, UpstreamGroupName: conn.UpstreamGroupName, Result: result,
 		FromState: fromState, ToState: toState, LatencyMs: latencyMs, ErrorKey: errorKey, ErrorDetail: errorDetail, RemoteAction: remoteAction,
 	}

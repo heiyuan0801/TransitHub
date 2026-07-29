@@ -111,7 +111,7 @@ git clone https://github.com/heiyuan0801/TransitHub.git transit-hub
 cd transit-hub
 
 # 先编辑 deploy/docker-compose.prod.yml：
-# - 镜像 tag（默认使用 ghcr.io/heiyuan0801/transithub:v0.1.10）
+# - 镜像 tag（默认使用 ghcr.io/heiyuan0801/transithub:v0.1.15）
 # - 替换所有 change-this-* 占位值
 # - DATABASE_URL 和 POSTGRES_PASSWORD 中的数据库密码
 # - ADMIN_EMAIL / ADMIN_PASSWORD
@@ -164,7 +164,7 @@ docker compose -f deploy/docker-compose.yml up -d
 由于 Dockerfile 放在 `deploy/`，但构建上下文需要使用仓库根目录，请使用：
 
 ```bash
-docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.10 .
+docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.15 .
 ```
 
 ### 发布 Docker 镜像
@@ -172,14 +172,14 @@ docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.10 .
 推送 `v*` Git 标签后，GitHub Actions 会自动构建 `linux/amd64` 和 `linux/arm64` 镜像并发布到 GHCR：
 
 ```bash
-git tag v0.1.10
-git push origin v0.1.10
+git tag v0.1.15
+git push origin v0.1.15
 ```
 
 发布镜像：
 
 ```text
-ghcr.io/heiyuan0801/transithub:v0.1.10
+ghcr.io/heiyuan0801/transithub:v0.1.15
 ghcr.io/heiyuan0801/transithub:latest
 ```
 

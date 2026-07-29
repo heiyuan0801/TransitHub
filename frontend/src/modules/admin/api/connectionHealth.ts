@@ -1,7 +1,10 @@
 import type {
+  AdminGroupPolicyConfiguration,
+  AdminGroupPolicyConfigurationInput,
   AdminGroupHealth,
   ConnectionHealthEvent,
   ConnectionHealthOverview,
+  ConnectionHealthStoredSummary,
   ConnectionHealthPolicy,
   ManualProbeModelOption,
   ManualProbeResult,
@@ -64,6 +67,9 @@ const requestJson = async <T>(path: string, options: RequestInit = {}): Promise<
 export const getConnectionHealthOverview = async (): Promise<ConnectionHealthOverview> =>
   requestJson<ConnectionHealthOverview>('/connection-health/overview')
 
+export const getConnectionHealthStoredSummary = async (): Promise<ConnectionHealthStoredSummary> =>
+  requestJson<ConnectionHealthStoredSummary>('/connection-health/stored-summary')
+
 export const getConnectionHealthGroups = async (): Promise<OwnGroupHealth[]> =>
   requestJson<OwnGroupHealth[]>('/connection-health/groups')
 
@@ -120,6 +126,20 @@ export const setTargetPolicyAssignments = async (targetId: string, policyIds: st
     body: JSON.stringify({ policyIds }),
   })
 
+export const getAdminGroupPolicyConfiguration = async (adminGroupId: string): Promise<AdminGroupPolicyConfiguration> =>
+  requestJson<AdminGroupPolicyConfiguration>(
+    `/connection-health/admin-groups/${encodeURIComponent(adminGroupId)}/policy-configuration`,
+  )
+
+export const setAdminGroupPolicyConfiguration = async (
+  adminGroupId: string,
+  input: AdminGroupPolicyConfigurationInput,
+): Promise<AdminGroupPolicyConfiguration> =>
+  requestJson<AdminGroupPolicyConfiguration>(
+    `/connection-health/admin-groups/${encodeURIComponent(adminGroupId)}/policy-configuration`,
+    { method: 'PUT', body: JSON.stringify(input) },
+  )
+
 export const disableConnection = async (connectionId: string): Promise<void> => {
   await requestJson<{ ok: boolean }>(`/connection-health/connections/${encodeURIComponent(connectionId)}/disable`, {
     method: 'POST',
@@ -146,3 +166,9 @@ export const updateConnectionHealthPolicy = async (id: string, input: PolicyInpu
     method: 'PUT',
     body: JSON.stringify(input),
   })
+
+export const deleteConnectionHealthPolicy = async (id: string): Promise<void> => {
+  await requestJson<{ ok: boolean }>(`/connection-health/policies/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}

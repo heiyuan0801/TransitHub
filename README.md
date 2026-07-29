@@ -111,7 +111,7 @@ git clone https://github.com/heiyuan0801/TransitHub.git transit-hub
 cd transit-hub
 
 # Edit deploy/docker-compose.prod.yml first:
-# - image tag (defaults to ghcr.io/heiyuan0801/transithub:v0.1.17)
+# - image tag (defaults to 192586992/transithub:latest)
 # - replace every change-this-* placeholder
 # - database password in both DATABASE_URL and POSTGRES_PASSWORD
 # - ADMIN_EMAIL / ADMIN_PASSWORD
@@ -164,7 +164,7 @@ This starts PostgreSQL and Redis on local ports `5432` and `6379`.
 Because the Dockerfile is stored in `deploy/` but expects the repository root as build context, build with:
 
 ```bash
-docker build -f deploy/Dockerfile -t ghcr.io/heiyuan0801/transithub:v0.1.17 .
+docker build -f deploy/Dockerfile -t 192586992/transithub:v0.1.17 .
 ```
 
 ### Publish Docker Images
@@ -179,8 +179,8 @@ git push origin v0.1.17
 Published images:
 
 ```text
-ghcr.io/heiyuan0801/transithub:v0.1.17
-ghcr.io/heiyuan0801/transithub:latest
+192586992/transithub:v0.1.17
+192586992/transithub:latest
 ```
 
 You can also publish a custom tag from **Actions > Publish Docker image > Run workflow** in the GitHub repository.

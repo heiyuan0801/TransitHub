@@ -1,5 +1,7 @@
 -- Separate multiplier-only priority automation from policies that run real model probes.
 ALTER TABLE IF EXISTS connection_health_policies
+    ADD COLUMN IF NOT EXISTS priority_mode text NOT NULL DEFAULT 'none';
+ALTER TABLE IF EXISTS connection_health_policies
     ADD COLUMN IF NOT EXISTS strategy_mode text NOT NULL DEFAULT 'health_probe';
 
 -- Runtime EnsureSchema historically creates these tables after migrations run. Guard the

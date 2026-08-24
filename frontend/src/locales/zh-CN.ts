@@ -2506,7 +2506,7 @@ export default {
       }
     },
     checkin: {
-      title: '每日签到', subtitle: '每天签到领取随机余额，连续签到还可获得额外奖励。', loading: '正在加载签到状态...',
+      title: '每日签到', subtitle: '每天完成签到，记录你的连续签到进度。', loading: '正在加载签到状态...',
       actions: { refresh: '刷新签到状态', checkin: '立即签到', checked: '今日已签到' },
       today: {
         ready: '今天可以签到', done: '今天已完成签到', range: '本次可随机获得 {min} - {max} 余额',
@@ -2515,15 +2515,15 @@ export default {
       streak: { label: '当前连续签到', days: '天' },
       stats: { totalDays: '累计签到', longestStreak: '最长连续', totalRewards: '累计获得余额', rank: '签到排名', unranked: '暂无' },
       calendar: {
-        title: '近 30 天签到记录', description: '蓝色日期表示当天签到奖励已成功发放。',
-        checkedTitle: '{date} 已签到，获得 {amount} 余额', emptyTitle: '{date} 未签到'
+        title: '近 30 天签到记录', description: '蓝色日期表示当天已成功签到。',
+        checkedTitle: '{date} 已签到', emptyTitle: '{date} 未签到'
       },
       leaderboard: {
         title: '签到天数排行榜', description: '按累计成功签到天数排名。', top: '前 10 名', empty: '还没有用户进入排行榜。',
         rank: '排名', user: '用户', days: '天数', streak: '连续', anonymous: '匿名用户', me: '我'
       },
       milestone: {
-        next: '下一个连续奖励', description: '连续签到第 {days} 天，额外获得 {amount} 余额。', completed: '你已经完成了当前配置的全部连续奖励。'
+        next: '下一个连续奖励', description: '连续签到第 {days} 天可获得额外奖励。', completed: '你已经完成了当前配置的全部连续奖励。'
       },
       history: {
         title: '最近签到', count: '{count} 条', empty: '还没有签到记录，完成今天的第一次签到吧。',

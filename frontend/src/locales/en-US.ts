@@ -2506,7 +2506,7 @@ export default {
       }
     },
     checkin: {
-      title: 'Daily Check-in', subtitle: 'Claim a random balance reward each day and earn bonuses for consecutive check-ins.', loading: 'Loading check-in status...',
+      title: 'Daily Check-in', subtitle: 'Check in each day and keep track of your streak.', loading: 'Loading check-in status...',
       actions: { refresh: 'Refresh check-in status', checkin: 'Check in now', checked: 'Checked in today' },
       today: {
         ready: 'Ready to check in', done: 'Today\'s check-in is complete', range: 'Receive a random balance reward from {min} to {max}',
@@ -2515,15 +2515,15 @@ export default {
       streak: { label: 'Current check-in streak', days: 'days' },
       stats: { totalDays: 'Total check-ins', longestStreak: 'Longest streak', totalRewards: 'Total balance earned', rank: 'Check-in rank', unranked: 'Unranked' },
       calendar: {
-        title: 'Last 30 Days', description: 'Blue dates indicate a successfully delivered check-in reward.',
-        checkedTitle: 'Checked in on {date}, received {amount} balance', emptyTitle: 'No check-in on {date}'
+        title: 'Last 30 Days', description: 'Blue dates indicate a successful check-in.',
+        checkedTitle: 'Checked in on {date}', emptyTitle: 'No check-in on {date}'
       },
       leaderboard: {
         title: 'Check-in Days Leaderboard', description: 'Ranks users by total successful check-in days.', top: 'Top 10', empty: 'No users are ranked yet.',
         rank: 'Rank', user: 'User', days: 'Days', streak: 'Streak', anonymous: 'Anonymous user', me: 'Me'
       },
       milestone: {
-        next: 'Next streak reward', description: 'Check in for {days} consecutive days to receive an extra {amount} balance.', completed: 'You have completed every configured streak reward.'
+        next: 'Next streak reward', description: 'Check in for {days} consecutive days to receive an extra reward.', completed: 'You have completed every configured streak reward.'
       },
       history: {
         title: 'Recent check-ins', count: '{count} records', empty: 'No check-in history yet. Complete today\'s first check-in.',

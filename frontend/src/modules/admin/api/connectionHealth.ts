@@ -12,6 +12,7 @@ import type {
   OwnGroupHealth,
   PolicyInput,
   TargetPolicyAssignments,
+  ConnectionHealthEmbedConfig,
 } from '../types/connectionHealth'
 import {
   authUnauthorizedErrorKey,
@@ -172,3 +173,19 @@ export const deleteConnectionHealthPolicy = async (id: string): Promise<void> =>
     method: 'DELETE',
   })
 }
+
+export const getConnectionHealthEmbedConfig = async (): Promise<ConnectionHealthEmbedConfig> =>
+  requestJson<ConnectionHealthEmbedConfig>('/connection-health/embed-config')
+
+export const updateConnectionHealthEmbedConfig = async (input: {
+  enabled?: boolean
+  allowedOrigin: string
+  refreshIntervalSeconds: number
+}): Promise<ConnectionHealthEmbedConfig> =>
+  requestJson<ConnectionHealthEmbedConfig>('/connection-health/embed-config', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+
+export const rotateConnectionHealthEmbedToken = async (): Promise<ConnectionHealthEmbedConfig> =>
+  requestJson<ConnectionHealthEmbedConfig>('/connection-health/embed-config/rotate-token', { method: 'POST' })

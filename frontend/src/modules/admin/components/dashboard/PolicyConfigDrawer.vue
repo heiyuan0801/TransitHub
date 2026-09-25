@@ -28,7 +28,7 @@ const prefix = 'admin.connectionHealth.policyDrawer'
 
 const providerOptions = ['gemini', 'anthropic', 'openai', 'custom']
 
-// 保守默认值：60s 探活间隔、1 个探活 token、每日预算有限、远端动作默认关闭需要用户显式打开。
+// 默认使用 HTML/SVG 质量探活提示词，因此需要足够的输出 token 才能判断模型是否降智。
 const DEFAULTS = {
   probeIntervalSeconds: 60,
   failureThreshold: 3,
@@ -37,7 +37,7 @@ const DEFAULTS = {
   observationSeconds: 300,
   recoveryStepPercent: 25,
   dailyProbeBudget: 1000,
-  maxProbeTokens: 1,
+  maxProbeTokens: 512,
 }
 
 const name = ref('')

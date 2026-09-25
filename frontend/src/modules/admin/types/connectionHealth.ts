@@ -314,3 +314,13 @@ export interface AdminGroupPolicyConfigurationInput {
   excludedTargetIds: string[]
   quickPolicy?: PolicyInput
 }
+
+export interface ConnectionHealthEmbedConfig {
+  embedToken: string
+  enabled: boolean
+  allowedOrigin: string
+  refreshIntervalSeconds: number
+  embedUrl: string
+  createdAt: string
+  updatedAt: string
+}

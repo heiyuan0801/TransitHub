@@ -1172,6 +1172,18 @@ export default {
         policies: 'Automation Policies',
         events: 'Probe Events'
       },
+      embed: {
+        title: 'Embedded online model check',
+        description: 'Embed a read-only status board. Groups and keys stay server-side and are never exposed; the actual probe interval is configured in each group policy.',
+        interval: 'Board refresh interval (sec)',
+        allowedOrigin: 'Allowed embed origin',
+        enabled: 'Enabled',
+        save: 'Save',
+        saving: 'Saving...',
+        saved: 'Saved',
+        saveFailed: 'Save failed. Please try again.',
+        rotate: 'Regenerate token'
+      },
       events: {
         title: 'Recent Probes & Remote Actions',
         empty: 'No events yet.',
@@ -1261,7 +1273,7 @@ export default {
         modelNamePlaceholder: 'Model name, e.g. gpt-4o-mini',
         modelEnabledLabel: 'Enabled',
         maxProbeTokensLabel: 'Max tokens',
-        probePromptPlaceholder: 'Probe prompt (leave empty for default)',
+        probePromptPlaceholder: 'Probe prompt (leave empty for Pelican SVG quality check)',
         probeIntervalLabel: 'Probe Interval (seconds)',
         dailyBudgetLabel: 'Daily Probe Budget',
         failureThresholdLabel: 'Failure Threshold',
@@ -1405,7 +1417,9 @@ export default {
         modelListInvalid: 'The upstream model list response format is not recognized.',
         multiplierRequired: 'This group has no valid multiplier. Set it upstream before enabling multiplier sorting.',
         manualModelsRequired: 'Please select at least one model before starting the test.',
-        policyNotFound: 'The selected policy does not exist or is not in the current workspace.'
+        policyNotFound: 'The selected policy does not exist or is not in the current workspace.',
+        embedInvalidOrigin: 'The embed origin must be a complete http or https origin.',
+        embedInvalidInterval: 'The refresh interval must be between 10 and 3600 seconds.'
       }
     },
       upstream: {

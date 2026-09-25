@@ -41,15 +41,16 @@ const (
 )
 
 type Server struct {
-	cfg                            config.Config
-	mux                            *http.ServeMux
-	allowed                        map[string]struct{}
-	authService                    *auth.Service
-	leaderboardFrameAncestorOrigin func(ctx context.Context, embedToken string) (string, bool)
-	lotteryFrameAncestorOrigin     func(ctx context.Context, embedToken string) (string, bool)
-	checkinFrameAncestorOrigin     func(ctx context.Context, embedToken string) (string, bool)
-	lotteryCancel                  context.CancelFunc
-	lotteryWorker                  *lottery.Worker
+	cfg                                 config.Config
+	mux                                 *http.ServeMux
+	allowed                             map[string]struct{}
+	authService                         *auth.Service
+	leaderboardFrameAncestorOrigin      func(ctx context.Context, embedToken string) (string, bool)
+	lotteryFrameAncestorOrigin          func(ctx context.Context, embedToken string) (string, bool)
+	checkinFrameAncestorOrigin          func(ctx context.Context, embedToken string) (string, bool)
+	connectionHealthFrameAncestorOrigin func(ctx context.Context, embedToken string) (string, bool)
+	lotteryCancel                       context.CancelFunc
+	lotteryWorker                       *lottery.Worker
 }
 
 func New(cfg config.Config, db *pgxpool.Pool, redisClient *redis.Client) *Server {
@@ -239,6 +240,7 @@ func New(cfg config.Config, db *pgxpool.Pool, redisClient *redis.Client) *Server
 	// 分组下账号/渠道，叠加 real_connections 探活状态。platformService 已实现所需方法。
 	connHealthService.SetPlatformGroupReader(platformService)
 	connection_health.RegisterRoutes(server.mux, connHealthService)
+	server.connectionHealthFrameAncestorOrigin = connHealthService.FrameAncestorOrigin
 
 	// 所有 workspace 表 schema 完成后再补 legacy 归属；随后才启动 restore、worker 和 scheduler，
 	// 避免后台任务在旧行尚未补齐 workspace 时读取或写回数据。
@@ -498,6 +500,18 @@ func (s *Server) setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 		origin := ""
 		if s.checkinFrameAncestorOrigin != nil {
 			origin, _ = s.checkinFrameAncestorOrigin(r.Context(), r.URL.Query().Get("embed_token"))
+		}
+		if origin == "" {
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+			return
+		}
+		w.Header().Set("Content-Security-Policy", "frame-ancestors "+origin)
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/embed/connection-health" {
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		origin := ""
+		if s.connectionHealthFrameAncestorOrigin != nil {
+			origin, _ = s.connectionHealthFrameAncestorOrigin(r.Context(), r.URL.Query().Get("embed_token"))
 		}
 		if origin == "" {
 			w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")

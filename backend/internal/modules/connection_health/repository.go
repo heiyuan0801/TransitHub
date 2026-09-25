@@ -99,6 +99,9 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_states_workspace_state ON connection_health_states (user_id, admin_account_id, state)`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_states_group ON connection_health_states (user_id, admin_account_id, own_group_name)`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_states_site_group ON connection_health_states (upstream_site_id, upstream_group_name)`,
+		`ALTER TABLE connection_health_states ADD COLUMN IF NOT EXISTS quality_status text NOT NULL DEFAULT 'unknown'`,
+		`ALTER TABLE connection_health_states ADD COLUMN IF NOT EXISTS quality_score integer NOT NULL DEFAULT 0`,
+		`ALTER TABLE connection_health_states ADD COLUMN IF NOT EXISTS quality_reason text NOT NULL DEFAULT ''`,
 
 		`CREATE TABLE IF NOT EXISTS connection_health_events (
 			id text PRIMARY KEY,
@@ -210,6 +213,18 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 			expires_at timestamptz NOT NULL,
 			updated_at timestamptz NOT NULL DEFAULT now()
 		)`,
+		`CREATE TABLE IF NOT EXISTS connection_health_embed_configs (
+			user_id text NOT NULL,
+			admin_account_id text NOT NULL DEFAULT '',
+			embed_token text NOT NULL UNIQUE,
+			enabled boolean NOT NULL DEFAULT false,
+			allowed_origin text NOT NULL DEFAULT '',
+			refresh_interval_seconds integer NOT NULL DEFAULT 30,
+			created_at timestamptz NOT NULL DEFAULT now(),
+			updated_at timestamptz NOT NULL DEFAULT now(),
+			PRIMARY KEY (user_id, admin_account_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_connection_health_embed_token ON connection_health_embed_configs (embed_token)`,
 	}
 	for _, stmt := range statements {
 		if _, err := r.db.Exec(ctx, stmt); err != nil {
@@ -507,8 +522,9 @@ func (r *Repository) UpsertState(ctx context.Context, s ConnectionHealthState) e
 			connection_id, model_name, user_id, admin_account_id, own_group_id, own_group_name,
 			upstream_site_id, upstream_group_id, upstream_group_name, state, current_weight,
 			consecutive_failures, consecutive_successes, last_probe_at, last_success_at, last_failure_at,
-			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,now())
+			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action,
+			quality_status, quality_score, quality_reason, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,now())
 		ON CONFLICT (connection_id, model_name) DO UPDATE SET
 			user_id = EXCLUDED.user_id,
 			admin_account_id = EXCLUDED.admin_account_id,
@@ -530,11 +546,15 @@ func (r *Repository) UpsertState(ctx context.Context, s ConnectionHealthState) e
 			last_error_key = EXCLUDED.last_error_key,
 			last_error_detail = EXCLUDED.last_error_detail,
 			last_remote_action = EXCLUDED.last_remote_action,
+			quality_status = EXCLUDED.quality_status,
+			quality_score = EXCLUDED.quality_score,
+			quality_reason = EXCLUDED.quality_reason,
 			updated_at = now()
 	`, s.ConnectionID, s.ModelName, s.UserID, s.AdminAccountID, s.OwnGroupID, s.OwnGroupName,
 		s.UpstreamSiteID, s.UpstreamGroupID, s.UpstreamGroupName, string(s.State), s.CurrentWeight,
 		s.ConsecutiveFailures, s.ConsecutiveSuccesses, s.LastProbeAt, s.LastSuccessAt, s.LastFailureAt,
-		s.CooldownUntil, s.ObservingUntil, s.LastLatencyMs, s.LastErrorKey, s.LastErrorDetail, s.LastRemoteAction)
+		s.CooldownUntil, s.ObservingUntil, s.LastLatencyMs, s.LastErrorKey, s.LastErrorDetail, s.LastRemoteAction,
+		s.QualityStatus, s.QualityScore, s.QualityReason)
 	return err
 }
 
@@ -543,7 +563,8 @@ func (r *Repository) GetState(ctx context.Context, connectionID string, modelNam
 		SELECT connection_id, model_name, user_id, admin_account_id, own_group_id, own_group_name,
 			upstream_site_id, upstream_group_id, upstream_group_name, state, current_weight,
 			consecutive_failures, consecutive_successes, last_probe_at, last_success_at, last_failure_at,
-			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action, updated_at
+			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action,
+			quality_status, quality_score, quality_reason, updated_at
 		FROM connection_health_states WHERE connection_id = $1 AND model_name = $2
 	`, connectionID, modelName)
 	return scanState(row)
@@ -555,7 +576,8 @@ func (r *Repository) ListStatesByWorkspace(ctx context.Context, userID string, a
 		SELECT connection_id, model_name, user_id, admin_account_id, own_group_id, own_group_name,
 			upstream_site_id, upstream_group_id, upstream_group_name, state, current_weight,
 			consecutive_failures, consecutive_successes, last_probe_at, last_success_at, last_failure_at,
-			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action, updated_at
+			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action,
+			quality_status, quality_score, quality_reason, updated_at
 		FROM connection_health_states WHERE user_id = $1 AND admin_account_id = $2
 	`, userID, adminAccountID)
 	if err != nil {
@@ -573,13 +595,64 @@ func (r *Repository) ListStatesByWorkspace(ctx context.Context, userID string, a
 	return states, rows.Err()
 }
 
+func (r *Repository) GetEmbedHealthConfigByWorkspace(ctx context.Context, userID string, adminAccountID string) (*EmbedHealthConfig, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at
+		FROM connection_health_embed_configs WHERE user_id = $1 AND admin_account_id = $2
+	`, userID, adminAccountID)
+	return scanEmbedHealthConfig(row)
+}
+
+func (r *Repository) GetEmbedHealthConfigByToken(ctx context.Context, token string) (*EmbedHealthConfig, error) {
+	row := r.db.QueryRow(ctx, `
+		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at
+		FROM connection_health_embed_configs WHERE embed_token = $1
+	`, token)
+	return scanEmbedHealthConfig(row)
+}
+
+func (r *Repository) SaveEmbedHealthConfig(ctx context.Context, userID string, adminAccountID string, config EmbedHealthConfig) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO connection_health_embed_configs
+			(user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,now(),now())
+		ON CONFLICT (user_id, admin_account_id) DO UPDATE SET
+			embed_token = EXCLUDED.embed_token,
+			enabled = EXCLUDED.enabled,
+			allowed_origin = EXCLUDED.allowed_origin,
+			refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
+			updated_at = now()
+	`, userID, adminAccountID, config.EmbedToken, config.Enabled, config.AllowedOrigin, config.RefreshIntervalSeconds)
+	return err
+}
+
+func (r *Repository) RotateEmbedHealthToken(ctx context.Context, userID string, adminAccountID string, token string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE connection_health_embed_configs SET embed_token = $3, updated_at = now()
+		WHERE user_id = $1 AND admin_account_id = $2
+	`, userID, adminAccountID, token)
+	return err
+}
+
+func scanEmbedHealthConfig(row pgx.Row) (*EmbedHealthConfig, error) {
+	var config EmbedHealthConfig
+	if err := row.Scan(&config.UserID, &config.AdminAccountID, &config.EmbedToken, &config.Enabled, &config.AllowedOrigin, &config.RefreshIntervalSeconds, &config.CreatedAt, &config.UpdatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &config, nil
+}
+
 // ListStatesByConnection 返回一条连接下全部模型的健康状态行。
 func (r *Repository) ListStatesByConnection(ctx context.Context, connectionID string) ([]ConnectionHealthState, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT connection_id, model_name, user_id, admin_account_id, own_group_id, own_group_name,
 			upstream_site_id, upstream_group_id, upstream_group_name, state, current_weight,
 			consecutive_failures, consecutive_successes, last_probe_at, last_success_at, last_failure_at,
-			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action, updated_at
+			cooldown_until, observing_until, last_latency_ms, last_error_key, last_error_detail, last_remote_action,
+			quality_status, quality_score, quality_reason, updated_at
 		FROM connection_health_states WHERE connection_id = $1
 	`, connectionID)
 	if err != nil {
@@ -603,7 +676,8 @@ func scanState(row pgx.Row) (*ConnectionHealthState, error) {
 	if err := row.Scan(&s.ConnectionID, &s.ModelName, &s.UserID, &s.AdminAccountID, &s.OwnGroupID, &s.OwnGroupName,
 		&s.UpstreamSiteID, &s.UpstreamGroupID, &s.UpstreamGroupName, &state, &s.CurrentWeight,
 		&s.ConsecutiveFailures, &s.ConsecutiveSuccesses, &s.LastProbeAt, &s.LastSuccessAt, &s.LastFailureAt,
-		&s.CooldownUntil, &s.ObservingUntil, &s.LastLatencyMs, &s.LastErrorKey, &s.LastErrorDetail, &s.LastRemoteAction, &s.UpdatedAt); err != nil {
+		&s.CooldownUntil, &s.ObservingUntil, &s.LastLatencyMs, &s.LastErrorKey, &s.LastErrorDetail, &s.LastRemoteAction,
+		&s.QualityStatus, &s.QualityScore, &s.QualityReason, &s.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
@@ -619,7 +693,8 @@ func scanStateRow(row rowScanner) (*ConnectionHealthState, error) {
 	if err := row.Scan(&s.ConnectionID, &s.ModelName, &s.UserID, &s.AdminAccountID, &s.OwnGroupID, &s.OwnGroupName,
 		&s.UpstreamSiteID, &s.UpstreamGroupID, &s.UpstreamGroupName, &state, &s.CurrentWeight,
 		&s.ConsecutiveFailures, &s.ConsecutiveSuccesses, &s.LastProbeAt, &s.LastSuccessAt, &s.LastFailureAt,
-		&s.CooldownUntil, &s.ObservingUntil, &s.LastLatencyMs, &s.LastErrorKey, &s.LastErrorDetail, &s.LastRemoteAction, &s.UpdatedAt); err != nil {
+		&s.CooldownUntil, &s.ObservingUntil, &s.LastLatencyMs, &s.LastErrorKey, &s.LastErrorDetail, &s.LastRemoteAction,
+		&s.QualityStatus, &s.QualityScore, &s.QualityReason, &s.UpdatedAt); err != nil {
 		return nil, err
 	}
 	s.State = State(state)

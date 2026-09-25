@@ -1172,6 +1172,18 @@ export default {
         policies: '自动化策略',
         events: '探活事件'
       },
+      embed: {
+        title: '内嵌在线检测看板',
+        description: '把只读检测结果嵌入你的站点。服务端读取分组和密钥，内嵌页面不会暴露密钥；后台实际探活间隔在分组策略中设置。',
+        interval: '看板刷新间隔（秒）',
+        allowedOrigin: '允许嵌入来源',
+        enabled: '启用',
+        save: '保存',
+        saving: '保存中...',
+        saved: '已保存',
+        saveFailed: '保存失败，请稍后重试',
+        rotate: '重新生成令牌'
+      },
       events: {
         title: '最近探活与远端动作',
         empty: '暂无事件记录。',
@@ -1261,7 +1273,7 @@ export default {
         modelNamePlaceholder: '模型名称，如 gpt-4o-mini',
         modelEnabledLabel: '启用',
         maxProbeTokensLabel: '最大 token',
-        probePromptPlaceholder: '探活 prompt（留空使用默认值）',
+        probePromptPlaceholder: '探活 prompt（留空使用鹈鹕 SVG 动画质量检测）',
         probeIntervalLabel: '探活间隔（秒）',
         dailyBudgetLabel: '每日探活预算',
         failureThresholdLabel: '失败阈值',
@@ -1405,7 +1417,9 @@ export default {
         modelListInvalid: '上游模型列表响应格式无法识别。',
         multiplierRequired: '当前分组没有有效倍率，请先在上游设置倍率后再启用倍率排序。',
         manualModelsRequired: '请至少选择一个模型再开始测试。',
-        policyNotFound: '所选策略不存在或不属于当前工作区。'
+        policyNotFound: '所选策略不存在或不属于当前工作区。',
+        embedInvalidOrigin: '嵌入来源必须是完整的 http 或 https 域名。',
+        embedInvalidInterval: '刷新间隔必须在 10 到 3600 秒之间。'
       }
     },
       upstream: {

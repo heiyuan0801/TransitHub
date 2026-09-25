@@ -760,7 +760,7 @@ func buildPolicyAndTargets(userID string, adminAccountID string, id string, in P
 		targets = append(targets, ModelTarget{
 			ID: targetID, PolicyID: id, UserID: userID, AdminAccountID: adminAccountID,
 			ModelName: strings.TrimSpace(t.ModelName), ProviderFamily: t.ProviderFamily, Enabled: t.Enabled,
-			ProbePrompt: t.ProbePrompt, MaxProbeTokens: defaultInt(t.MaxProbeTokens, 1),
+			ProbePrompt: t.ProbePrompt, MaxProbeTokens: defaultInt(t.MaxProbeTokens, defaultProbeMaxTokens),
 		})
 	}
 	policy.ModelTargets = targets
@@ -1009,6 +1009,9 @@ func (s *Service) probeOnce(ctx context.Context, conn my_sites.RealConnection, p
 	next.LastProbeAt = &now
 	latencyMs := outcome.LatencyMs
 	next.LastLatencyMs = &latencyMs
+	next.QualityStatus = outcome.QualityStatus
+	next.QualityScore = outcome.QualityScore
+	next.QualityReason = outcome.QualityReason
 	next.UserID = policy.UserID
 	next.AdminAccountID = policy.AdminAccountID
 	next.OwnGroupID = policy.OwnGroupID
@@ -1068,6 +1071,7 @@ func (s *Service) defaultState(conn my_sites.RealConnection, modelName string) C
 		ConnectionID: conn.ID, ModelName: modelName, UpstreamSiteID: conn.UpstreamSiteID,
 		UpstreamGroupID: conn.UpstreamGroupID, UpstreamGroupName: conn.UpstreamGroupName,
 		State: StateHealthy, CurrentWeight: 100,
+		QualityStatus: "unknown",
 	}
 }
 

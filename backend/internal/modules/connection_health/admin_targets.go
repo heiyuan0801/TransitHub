@@ -464,6 +464,9 @@ func (s *Service) probeTargetOnce(ctx context.Context, userID string, adminAccou
 	next.LastProbeAt = &now
 	latencyMs := outcome.LatencyMs
 	next.LastLatencyMs = &latencyMs
+	next.QualityStatus = outcome.QualityStatus
+	next.QualityScore = outcome.QualityScore
+	next.QualityReason = outcome.QualityReason
 
 	if outcome.Result == ResultOK {
 		next.LastSuccessAt = &now
@@ -570,6 +573,7 @@ func defaultTargetState(userID string, adminAccountID string, target AdminProbeT
 		UpstreamGroupName: target.AdminGroupName,
 		State:             StateHealthy,
 		CurrentWeight:     100,
+		QualityStatus:     "unknown",
 	}
 }
 

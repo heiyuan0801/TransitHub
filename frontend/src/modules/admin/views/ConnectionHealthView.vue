@@ -17,6 +17,11 @@ import {
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { listUpstreamSites } from '../api/upstream'
+import {
+  getConnectionHealthEmbedConfig,
+  rotateConnectionHealthEmbedToken,
+  updateConnectionHealthEmbedConfig,
+} from '../api/connectionHealth'
 import { connectionHealthMessageKey, useConnectionHealth } from '../composables/useConnectionHealth'
 import AdminGroupHealthDetail from '../components/dashboard/AdminGroupHealthDetail.vue'
 import ConnectionHealthEventsDialog from '../components/dashboard/ConnectionHealthEventsDialog.vue'
@@ -56,6 +61,11 @@ const selectedGroupId = ref('')
 const selectedConnectionId = ref('')
 const eventsDialogOpen = ref(false)
 const siteNameMap = ref<Map<string, string>>(new Map())
+const embedConfig = ref<import('../types/connectionHealth').ConnectionHealthEmbedConfig | null>(null)
+const embedOrigin = ref('')
+const embedInterval = ref(30)
+const embedSaving = ref(false)
+const embedMessage = ref('')
 
 const groupTypes = ['public', 'exclusive', 'subscription']
 const groupTypeLabel = (type: string): string => t(`admin.connectionHealth.groupTypes.${groupTypes.includes(type) ? type : 'public'}`)
@@ -99,7 +109,46 @@ onMounted(() => {
   void loadEvents()
   void loadPolicies()
   void loadSiteNames()
+  void loadEmbedConfig()
 })
+
+const embedUrl = computed(() => {
+  if (!embedConfig.value?.embedToken) return ''
+  return `${window.location.origin}/embed/connection-health?embed_token=${encodeURIComponent(embedConfig.value.embedToken)}`
+})
+const embedSnippet = computed(() => embedUrl.value ? `<iframe src="${embedUrl.value}" title="在线模型检测" style="width:100%;min-height:520px;border:0" loading="lazy"></iframe>` : '')
+
+const loadEmbedConfig = async () => {
+  try {
+    embedConfig.value = await getConnectionHealthEmbedConfig()
+    embedOrigin.value = embedConfig.value.allowedOrigin
+    embedInterval.value = embedConfig.value.refreshIntervalSeconds
+  } catch {
+    embedConfig.value = null
+  }
+}
+
+const saveEmbedConfig = async () => {
+  if (!embedConfig.value || embedSaving.value) return
+  embedSaving.value = true
+  embedMessage.value = ''
+  try {
+    embedConfig.value = await updateConnectionHealthEmbedConfig({
+      enabled: embedConfig.value.enabled,
+      allowedOrigin: embedOrigin.value,
+      refreshIntervalSeconds: embedInterval.value,
+    })
+    embedMessage.value = t('admin.connectionHealth.embed.saved')
+  } catch {
+    embedMessage.value = t('admin.connectionHealth.embed.saveFailed')
+  } finally { embedSaving.value = false }
+}
+
+const rotateEmbed = async () => {
+  if (embedSaving.value) return
+  embedSaving.value = true
+  try { embedConfig.value = await rotateConnectionHealthEmbedToken() } finally { embedSaving.value = false }
+}
 
 const documentVisibility = useDocumentVisibility()
 let autoRefreshInFlight = false
@@ -267,6 +316,25 @@ const handleDeletePolicy = async (policy: ConnectionHealthPolicy) => {
         </Button>
       </div>
     </header>
+
+    <section v-if="embedConfig" class="rounded-lg border border-border/60 bg-card p-4 shadow-sm">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div class="min-w-0">
+          <h2 class="text-sm font-semibold text-foreground">{{ t('admin.connectionHealth.embed.title') }}</h2>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">{{ t('admin.connectionHealth.embed.description') }}</p>
+          <p class="mt-2 break-all rounded-md bg-muted/40 px-2 py-1 font-mono text-xs text-muted-foreground">{{ embedUrl }}</p>
+          <p class="mt-1 break-all rounded-md bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground">{{ embedSnippet }}</p>
+        </div>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.interval') }}</span><input v-model.number="embedInterval" type="number" min="10" max="3600" class="h-9 w-24 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
+          <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.allowedOrigin') }}</span><input v-model="embedOrigin" type="url" placeholder="https://example.com" class="h-9 w-56 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
+          <label class="flex h-9 items-center gap-2 text-sm text-foreground"><input v-model="embedConfig.enabled" type="checkbox" class="h-4 w-4">{{ t('admin.connectionHealth.embed.enabled') }}</label>
+          <Button size="sm" :disabled="embedSaving" @click="saveEmbedConfig">{{ embedSaving ? t('admin.connectionHealth.embed.saving') : t('admin.connectionHealth.embed.save') }}</Button>
+          <Button variant="secondary" size="sm" :disabled="embedSaving" @click="rotateEmbed">{{ t('admin.connectionHealth.embed.rotate') }}</Button>
+        </div>
+      </div>
+      <p v-if="embedMessage" class="mt-2 text-xs text-muted-foreground">{{ embedMessage }}</p>
+    </section>
 
     <!-- 汇总与主列表使用同一 admin target 数据源。 -->
     <section class="overflow-hidden rounded-lg border border-border/60 bg-card" :aria-label="t('admin.connectionHealth.summaryLabel')">

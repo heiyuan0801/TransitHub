@@ -34,6 +34,43 @@ const (
 	ResultUnsupported        ResultKey = "unsupported"
 )
 
+type EmbedHealthConfig struct {
+	UserID                 string    `json:"-"`
+	AdminAccountID         string    `json:"-"`
+	EmbedToken             string    `json:"embedToken"`
+	Enabled                bool      `json:"enabled"`
+	AllowedOrigin          string    `json:"allowedOrigin"`
+	RefreshIntervalSeconds int       `json:"refreshIntervalSeconds"`
+	EmbedURL               string    `json:"embedUrl"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
+}
+
+type EmbedHealthConfigInput struct {
+	Enabled                *bool  `json:"enabled"`
+	AllowedOrigin          string `json:"allowedOrigin"`
+	RefreshIntervalSeconds int    `json:"refreshIntervalSeconds"`
+}
+
+type EmbedHealthModel struct {
+	ConnectionID  string     `json:"connectionId"`
+	GroupName     string     `json:"groupName"`
+	ModelName     string     `json:"modelName"`
+	State         State      `json:"state"`
+	LatencyMs     *int       `json:"latencyMs,omitempty"`
+	LastProbeAt   *time.Time `json:"lastProbeAt,omitempty"`
+	ErrorKey      string     `json:"errorKey,omitempty"`
+	QualityStatus string     `json:"qualityStatus"`
+	QualityScore  int        `json:"qualityScore"`
+	QualityReason string     `json:"qualityReason,omitempty"`
+}
+
+type EmbedHealthResponse struct {
+	GeneratedAt            time.Time          `json:"generatedAt"`
+	RefreshIntervalSeconds int                `json:"refreshIntervalSeconds"`
+	Models                 []EmbedHealthModel `json:"models"`
+}
+
 // ProviderFamily 探活请求的最小形态按此分类选择。
 const (
 	ProviderGemini    = "gemini"
@@ -80,7 +117,10 @@ const (
 	ErrorPolicyNotFound = "admin.connectionHealth.errors.policyNotFound"
 	// ErrorMultiplierRequired 表示用户尝试给没有有效倍率的分组启用倍率优先级策略。
 	// 前端应提示先在上游配置倍率；后端绝不使用 1x 等猜测值代替。
-	ErrorMultiplierRequired = "admin.connectionHealth.errors.multiplierRequired"
+	ErrorMultiplierRequired   = "admin.connectionHealth.errors.multiplierRequired"
+	ErrorEmbedInvalidOrigin   = "admin.connectionHealth.errors.embedInvalidOrigin"
+	ErrorEmbedInvalidInterval = "admin.connectionHealth.errors.embedInvalidInterval"
+	ErrorEmbedSessionInvalid  = "embed.connectionHealth.errors.sessionInvalid"
 )
 
 // PolicyAssignment 对应 connection_health_policy_assignments 表：一条「target 显式绑定某条策略」
@@ -224,6 +264,9 @@ type ConnectionHealthState struct {
 	LastErrorKey         string
 	LastErrorDetail      string
 	LastRemoteAction     string
+	QualityStatus        string
+	QualityScore         int
+	QualityReason        string
 	UpdatedAt            time.Time
 }
 
@@ -251,9 +294,12 @@ type ConnectionHealthEvent struct {
 
 // ProbeOutcome 是一次真实探活的结果，供状态机和事件记录消费。
 type ProbeOutcome struct {
-	Result    ResultKey
-	LatencyMs int
-	Detail    string
+	Result        ResultKey
+	LatencyMs     int
+	Detail        string
+	QualityStatus string
+	QualityScore  int
+	QualityReason string
 }
 
 // MySitesReader 是 connection_health 对 my_sites 模块的全部只读依赖，

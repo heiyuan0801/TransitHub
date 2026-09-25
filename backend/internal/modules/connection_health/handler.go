@@ -36,6 +36,66 @@ func RegisterRoutes(mux *http.ServeMux, service *Service) {
 	mux.HandleFunc("PUT /api/connection-health/targets/{id}/policy-assignments", handler.putPolicyAssignments)
 	mux.HandleFunc("GET /api/connection-health/admin-groups/{id}/policy-configuration", handler.getAdminGroupPolicyConfiguration)
 	mux.HandleFunc("PUT /api/connection-health/admin-groups/{id}/policy-configuration", handler.putAdminGroupPolicyConfiguration)
+	mux.HandleFunc("GET /api/connection-health/embed-config", handler.getEmbedConfig)
+	mux.HandleFunc("PUT /api/connection-health/embed-config", handler.updateEmbedConfig)
+	mux.HandleFunc("POST /api/connection-health/embed-config/rotate-token", handler.rotateEmbedToken)
+	mux.HandleFunc("GET /api/embed/connection-health", handler.getEmbedData)
+}
+
+func (h *Handler) getEmbedConfig(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	config, err := h.service.GetEmbedHealthConfig(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, config)
+}
+
+func (h *Handler) updateEmbedConfig(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	var input EmbedHealthConfigInput
+	if err := httpjson.Decode(r, &input); err != nil {
+		httpjson.WriteError(w, http.StatusBadRequest, ErrorRequest)
+		return
+	}
+	config, err := h.service.UpdateEmbedHealthConfig(r.Context(), userID, input)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, config)
+}
+
+func (h *Handler) rotateEmbedToken(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	config, err := h.service.RotateEmbedHealthToken(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, config)
+}
+
+func (h *Handler) getEmbedData(w http.ResponseWriter, r *http.Request) {
+	response, err := h.service.GetEmbedHealth(r.Context(), r.URL.Query().Get("embed_token"))
+	if err != nil {
+		writeEmbedError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, response)
 }
 
 func (h *Handler) storedSummary(w http.ResponseWriter, r *http.Request) {
@@ -410,6 +470,19 @@ func writeError(w http.ResponseWriter, err error) {
 		}
 		if requestErr == requestError(ErrorNoCurrentAccount) {
 			status = http.StatusConflict
+		}
+		httpjson.WriteError(w, status, requestErr.Error())
+		return
+	}
+	httpjson.WriteError(w, http.StatusInternalServerError, ErrorUnknown)
+}
+
+func writeEmbedError(w http.ResponseWriter, err error) {
+	var requestErr requestError
+	if errors.As(err, &requestErr) {
+		status := http.StatusBadRequest
+		if requestErr == requestError(ErrorEmbedSessionInvalid) {
+			status = http.StatusUnauthorized
 		}
 		httpjson.WriteError(w, status, requestErr.Error())
 		return

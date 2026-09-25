@@ -276,7 +276,7 @@ const createQuickPolicyInput = (): PolicyInput => {
           providerFamily: providerFamily.value,
           enabled: true,
           probePrompt: '',
-          maxProbeTokens: 1,
+          maxProbeTokens: 512,
         })),
   }
 }

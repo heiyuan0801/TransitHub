@@ -15,7 +15,8 @@ import (
 // ProbeTimeout 是单次真实探活请求的超时时间，任务书要求默认 10s。
 const ProbeTimeout = 10 * time.Second
 
-const defaultProbePrompt = "hi"
+const defaultProbePrompt = `请生成可直接运行的单文件HTML，使用内联SVG绘制鹈鹕骑自行车的二维循环动画。画面以鹈鹕和自行车为主体，展示清晰的身体结构、踩踏动作和车轮转动，配合协调的背景、配色与层次。动画应流畅自然、衔接连续，并适配不同屏幕尺寸。禁止依赖外部资源，只输出完整HTML，不要代码围栏或解释文字。`
+const defaultProbeMaxTokens = 512
 
 // ProbeRequest 是发起一次真实轻量探活所需的全部参数。UpstreamKey 只用于构造请求凭据，
 // 探活结果（ProbeOutcome）绝不回填明文 key。
@@ -43,7 +44,7 @@ func NewRealProbeRunner() *RealProbeRunner {
 func (r *RealProbeRunner) Probe(ctx context.Context, req ProbeRequest) ProbeOutcome {
 	maxTokens := req.MaxTokens
 	if maxTokens <= 0 {
-		maxTokens = 1
+		maxTokens = defaultProbeMaxTokens
 	}
 	prompt := strings.TrimSpace(req.ProbePrompt)
 	if prompt == "" {
@@ -64,7 +65,7 @@ func (r *RealProbeRunner) Probe(ctx context.Context, req ProbeRequest) ProbeOutc
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	return classifyHTTPResponse(resp.StatusCode, body, req.UpstreamKey, latencyMs)
+	return classifyHTTPResponse(resp.StatusCode, body, req.UpstreamKey, latencyMs, prompt)
 }
 
 // buildProbeRequest 统一走 OpenAI 兼容的 /v1/chat/completions 网关端点。
@@ -135,7 +136,7 @@ func classifyTransportError(err error) ResultKey {
 }
 
 // classifyHTTPResponse 按状态码和响应体归类为 7 种错误分类之一，或 ok。
-func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs int) ProbeOutcome {
+func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs int, prompt string) ProbeOutcome {
 	detail := redact(truncate(string(body), 500), upstreamKey)
 
 	switch {
@@ -143,7 +144,8 @@ func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs
 		if !json.Valid(body) {
 			return ProbeOutcome{Result: ResultInvalidResponse, LatencyMs: latencyMs, Detail: detail}
 		}
-		return ProbeOutcome{Result: ResultOK, LatencyMs: latencyMs, Detail: ""}
+		qualityStatus, qualityScore, qualityReason := classifyModelQuality(prompt, body)
+		return ProbeOutcome{Result: ResultOK, LatencyMs: latencyMs, Detail: "", QualityStatus: qualityStatus, QualityScore: qualityScore, QualityReason: qualityReason}
 
 	case status == http.StatusTooManyRequests:
 		return ProbeOutcome{Result: ResultRateLimited, LatencyMs: latencyMs, Detail: detail}
@@ -161,6 +163,68 @@ func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs
 		// 其余 4xx（参数错误等）无法安全归类为上游不可用，按响应无法解析处理，避免误判暂停。
 		return ProbeOutcome{Result: ResultInvalidResponse, LatencyMs: latencyMs, Detail: detail}
 	}
+}
+
+// classifyModelQuality 对需要生成 HTML/SVG 动画的检测提示词做结构化判定。
+// 这里只保存判定结果，不保存模型原文，避免把生成内容或密钥相关信息写入健康状态。
+func classifyModelQuality(prompt string, body []byte) (string, int, string) {
+	lowerPrompt := strings.ToLower(prompt)
+	if !strings.Contains(lowerPrompt, "html") || !strings.Contains(lowerPrompt, "svg") {
+		return "unknown", 0, "该探活提示词不是 HTML/SVG 质量检测提示词"
+	}
+
+	var payload struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Text string `json:"text"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil || len(payload.Choices) == 0 {
+		return "degraded", 0, "响应缺少可读取的模型内容"
+	}
+	content := strings.TrimSpace(payload.Choices[0].Message.Content)
+	if content == "" {
+		content = strings.TrimSpace(payload.Choices[0].Text)
+	}
+	if content == "" {
+		return "degraded", 0, "模型没有返回 HTML 内容"
+	}
+	lower := strings.ToLower(content)
+	if strings.Contains(content, "```") {
+		return "degraded", 35, "返回了 Markdown 代码围栏"
+	}
+	if strings.Contains(lower, "无法") || strings.Contains(lower, "不能") || strings.Contains(lower, "抱歉") || strings.Contains(lower, "i can't") || strings.Contains(lower, "i cannot") {
+		return "degraded", 20, "模型拒绝生成目标内容"
+	}
+	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || strings.Contains(lower, "<link ") {
+		return "degraded", 30, "HTML 依赖外部资源"
+	}
+
+	score := 0
+	if strings.Contains(lower, "<!doctype html") || strings.Contains(lower, "<html") {
+		score += 25
+	}
+	if strings.Contains(lower, "<svg") {
+		score += 30
+	}
+	if strings.Contains(lower, "@keyframes") || strings.Contains(lower, "<animate") || strings.Contains(lower, "animation:") {
+		score += 25
+	}
+	if strings.Contains(lower, "<style") || strings.Contains(lower, "<script") {
+		score += 10
+	}
+	if len(content) >= 300 {
+		score += 10
+	}
+	if score >= 90 {
+		return "not_degraded", score, "包含完整 HTML、内联 SVG 和动画结构"
+	}
+	if score >= 50 {
+		return "degraded", score, "只满足部分 HTML/SVG 动画要求"
+	}
+	return "degraded", score, "缺少 HTML、SVG 或连续动画关键结构"
 }
 
 // redact 把探活凭据从错误信息/响应体中裁剪掉，事件和日志绝不落地明文 key。

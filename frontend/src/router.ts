@@ -44,6 +44,11 @@ const routes = [
     component: () => import('./modules/embed/checkin/CheckinEmbedPage.vue')
   },
   {
+    path: '/embed/connection-health',
+    name: 'EmbedConnectionHealth',
+    component: () => import('./modules/embed/connection-health/ConnectionHealthEmbedPage.vue')
+  },
+  {
     path: '/admin',
     component: () => import('./modules/admin/layout/AdminLayout.vue'),
     meta: { requiresAuth: true },

@@ -32,6 +32,7 @@ func TestWorkspaceDeleteStatementsCoverAllWorkspaceTables(t *testing.T) {
 		"connection_health_states",
 		"connection_health_events",
 		"connection_health_policies",
+		"connection_health_embed_configs",
 		"ticket_attachments",
 		"ticket_messages",
 		"tickets",

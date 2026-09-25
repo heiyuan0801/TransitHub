@@ -194,3 +194,18 @@ func TestProbe_KeyNeverLeaksIntoDetail(t *testing.T) {
 		t.Fatalf("upstream key leaked into probe outcome detail: %s", outcome.Detail)
 	}
 }
+
+func TestClassifyModelQuality(t *testing.T) {
+	prompt := "请生成可直接运行的单文件HTML，使用内联SVG绘制鹈鹕自行车动画"
+	good := `{"choices":[{"message":{"content":"<!doctype html><html><style>@keyframes ride{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style><body><svg><animate attributeName='x' /></svg><script>requestAnimationFrame(()=>{})</script><p>动画</p></body></html>"}}]}`
+	status, score, _ := classifyModelQuality(prompt, []byte(good))
+	if status != "not_degraded" || score < 90 {
+		t.Fatalf("good html quality = %s/%d", status, score)
+	}
+
+	bad := "{\"choices\":[{\"message\":{\"content\":\"```html\\n<div>无法生成</div>\\n```\"}}]}"
+	status, score, _ = classifyModelQuality(prompt, []byte(bad))
+	if status != "degraded" || score >= 90 {
+		t.Fatalf("bad html quality = %s/%d", status, score)
+	}
+}

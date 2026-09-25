@@ -235,6 +235,24 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_model text NOT NULL DEFAULT ''`,
 		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_provider_family text NOT NULL DEFAULT 'openai'`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_embed_token ON connection_health_embed_configs (embed_token)`,
+		`CREATE TABLE IF NOT EXISTS connection_health_embed_logs (
+			id text PRIMARY KEY,
+			user_id text NOT NULL,
+			admin_account_id text NOT NULL DEFAULT '',
+			model_name text NOT NULL,
+			result text NOT NULL,
+			healthy boolean NOT NULL DEFAULT false,
+			first_byte_latency_ms integer NULL,
+			latency_ms integer NOT NULL DEFAULT 0,
+			error_key text NOT NULL DEFAULT '',
+			error_detail text NOT NULL DEFAULT '',
+			quality_status text NOT NULL DEFAULT '',
+			quality_score integer NOT NULL DEFAULT 0,
+			quality_reason text NOT NULL DEFAULT '',
+			probed_at timestamptz NOT NULL DEFAULT now(),
+			created_at timestamptz NOT NULL DEFAULT now()
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_connection_health_embed_logs_workspace ON connection_health_embed_logs (user_id, admin_account_id, probed_at DESC)`,
 	}
 	for _, stmt := range statements {
 		if _, err := r.db.Exec(ctx, stmt); err != nil {
@@ -656,7 +674,83 @@ func (r *Repository) RotateEmbedHealthToken(ctx context.Context, userID string, 
 	return err
 }
 
+func (r *Repository) ListEnabledEmbedHealthConfigs(ctx context.Context) ([]EmbedHealthConfig, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds,
+			custom_check_enabled, custom_base_url, custom_api_key_ciphertext, custom_model, custom_provider_family,
+			created_at, updated_at
+		FROM connection_health_embed_configs
+		WHERE enabled = true AND custom_check_enabled = true
+		ORDER BY updated_at ASC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	configs := make([]EmbedHealthConfig, 0)
+	for rows.Next() {
+		config, err := scanEmbedHealthConfigRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		configs = append(configs, *config)
+	}
+	return configs, rows.Err()
+}
+
+func (r *Repository) InsertEmbedHealthLog(ctx context.Context, logEntry EmbedHealthLog, userID string, adminAccountID string) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO connection_health_embed_logs (
+			id, user_id, admin_account_id, model_name, result, healthy, first_byte_latency_ms, latency_ms,
+			error_key, error_detail, quality_status, quality_score, quality_reason, probed_at, created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
+	`, logEntry.ID, userID, adminAccountID, logEntry.ModelName, logEntry.Result, logEntry.Healthy,
+		logEntry.FirstByteLatencyMs, logEntry.LatencyMs, logEntry.ErrorKey, truncate(logEntry.ErrorDetail, 500),
+		logEntry.QualityStatus, logEntry.QualityScore, truncate(logEntry.QualityReason, 500), logEntry.ProbedAt)
+	return err
+}
+
+func (r *Repository) ListEmbedHealthLogs(ctx context.Context, userID string, adminAccountID string, limit int) ([]EmbedHealthLog, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT id, model_name, result, healthy, first_byte_latency_ms, latency_ms,
+			error_key, error_detail, quality_status, quality_score, quality_reason, probed_at
+		FROM connection_health_embed_logs
+		WHERE user_id = $1 AND admin_account_id = $2
+		ORDER BY probed_at DESC, created_at DESC
+		LIMIT $3
+	`, userID, adminAccountID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	logs := make([]EmbedHealthLog, 0)
+	for rows.Next() {
+		var entry EmbedHealthLog
+		if err := rows.Scan(&entry.ID, &entry.ModelName, &entry.Result, &entry.Healthy, &entry.FirstByteLatencyMs, &entry.LatencyMs,
+			&entry.ErrorKey, &entry.ErrorDetail, &entry.QualityStatus, &entry.QualityScore, &entry.QualityReason, &entry.ProbedAt); err != nil {
+			return nil, err
+		}
+		logs = append(logs, entry)
+	}
+	return logs, rows.Err()
+}
+
 func scanEmbedHealthConfig(row pgx.Row) (*EmbedHealthConfig, error) {
+	return scanEmbedHealthConfigScanner(row)
+}
+
+func scanEmbedHealthConfigRow(row rowScanner) (*EmbedHealthConfig, error) {
+	return scanEmbedHealthConfigScanner(row)
+}
+
+type embedHealthConfigScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanEmbedHealthConfigScanner(row embedHealthConfigScanner) (*EmbedHealthConfig, error) {
 	var config EmbedHealthConfig
 	if err := row.Scan(&config.UserID, &config.AdminAccountID, &config.EmbedToken, &config.Enabled, &config.AllowedOrigin, &config.RefreshIntervalSeconds,
 		&config.CustomCheckEnabled, &config.CustomBaseURL, &config.CustomAPIKeyCiphertext, &config.CustomModel, &config.CustomProviderFamily,

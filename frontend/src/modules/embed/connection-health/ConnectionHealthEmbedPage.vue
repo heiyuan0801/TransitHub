@@ -16,12 +16,26 @@ type Model = {
   qualityScore?: number
   qualityReason?: string
 }
-type Response = { generatedAt: string; refreshIntervalSeconds: number; models: Model[] }
+type LogEntry = {
+  id: string
+  modelName: string
+  result: string
+  healthy: boolean
+  firstByteLatencyMs?: number | null
+  latencyMs: number
+  errorKey?: string
+  errorDetail?: string
+  qualityStatus?: string
+  qualityScore?: number
+  qualityReason?: string
+  probedAt: string
+}
+type Response = { generatedAt: string; refreshIntervalSeconds: number; models: Model[]; logs?: LogEntry[] }
 
 const route = useRoute()
 const loading = ref(true)
 const error = ref('')
-const data = ref<Response>({ generatedAt: '', refreshIntervalSeconds: 30, models: [] })
+const data = ref<Response>({ generatedAt: '', refreshIntervalSeconds: 30, models: [], logs: [] })
 let timer: number | undefined
 const apiBase = String(import.meta.env.VITE_API_BASE_URL ?? '/api').replace(/\/$/, '')
 
@@ -30,6 +44,7 @@ const token = computed(() => {
   return Array.isArray(raw) ? String(raw[0] ?? '') : String(raw ?? '')
 })
 const orderedModels = computed(() => data.value.models)
+const logs = computed(() => data.value.logs ?? [])
 const healthyCount = computed(() => orderedModels.value.filter((model) => model.state === 'healthy').length)
 const notDegradedCount = computed(() => orderedModels.value.filter((model) => model.qualityStatus === 'not_degraded').length)
 const degradedCount = computed(() => orderedModels.value.filter((model) => model.qualityStatus === 'degraded').length)
@@ -43,6 +58,7 @@ const errorReason = (errorKey?: string) => ({
   model_not_found: '模型不存在或当前渠道不支持该模型',
   invalid_response: '上游返回格式无法解析',
   unsupported: '当前检测方式暂不支持该模型',
+  not_probed: '等待后端首次检测',
 }[errorKey ?? ''] ?? '')
 const qualityLabel = (status?: string, state?: string) => status === 'not_degraded' ? '不降智' : status === 'degraded' ? '降智' : state && state !== 'healthy' ? stateLabel(state) : '待判断'
 const qualityClass = (status?: string, state?: string) => status === 'not_degraded' ? 'bg-emerald-700 text-white' : status === 'degraded' ? 'bg-rose-700 text-white' : state && state !== 'healthy' ? 'bg-amber-700 text-white' : 'bg-slate-700 text-slate-200'
@@ -54,18 +70,32 @@ const formatDuration = (milliseconds?: number | null) => {
 }
 const formatTime = (value?: string | null) => value ? new Date(value).toLocaleString() : '暂无检测时间'
 const healthIcon = (state: string) => state === 'healthy' ? CheckCircle2 : XCircle
+const logLabel = (entry: LogEntry) => entry.healthy ? '成功' : '失败'
+const logClass = (entry: LogEntry) => entry.healthy ? 'text-emerald-700' : 'text-rose-700'
 
 const load = async () => {
   if (!token.value) { error.value = '缺少内嵌令牌'; loading.value = false; return }
   loading.value = true
   try {
     const response = await fetch(`${apiBase}/embed/connection-health?embed_token=${encodeURIComponent(token.value)}`, { headers: { Accept: 'application/json' } })
-    const payload = await response.json() as Response & { message?: string }
-    if (!response.ok) throw new Error(response.status === 401 ? '内嵌令牌无效或看板未启用' : '模型检测暂不可用')
-    data.value = { ...payload, models: Array.isArray(payload.models) ? payload.models : [] }
+    // 某些代理在 204/网关错误时会返回空 body，不能直接调用 response.json()。
+    const raw = await response.text()
+    let payload: Partial<Response> & { message?: string } = {}
+    if (raw.trim()) {
+      try { payload = JSON.parse(raw) as Partial<Response> & { message?: string } } catch {
+        throw new Error('模型检测返回格式无效')
+      }
+    }
+    if (!response.ok) throw new Error(payload.message || (response.status === 401 ? '内嵌令牌无效或看板未启用' : '模型检测暂不可用'))
+    data.value = {
+      generatedAt: String(payload.generatedAt ?? ''),
+      refreshIntervalSeconds: Number(payload.refreshIntervalSeconds ?? 30),
+      models: Array.isArray(payload.models) ? payload.models as Model[] : [],
+      logs: Array.isArray(payload.logs) ? payload.logs as LogEntry[] : [],
+    }
     error.value = ''
     if (timer) window.clearInterval(timer)
-    timer = window.setInterval(() => void load(), Math.max(10, payload.refreshIntervalSeconds || 30) * 1000)
+    timer = window.setInterval(() => void load(), Math.max(10, data.value.refreshIntervalSeconds || 30) * 1000)
   } catch (err) {
     error.value = err instanceof Error ? err.message : '模型检测暂不可用'
   } finally { loading.value = false }
@@ -97,8 +127,8 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
         <div class="rounded-2xl border border-[#d9e4d7] bg-white/75 p-4 shadow-sm"><p class="text-xs text-[#789088]">自动刷新</p><p class="mt-2 text-2xl font-semibold">{{ data.refreshIntervalSeconds }}<span class="ml-1 text-sm font-normal text-[#789088]">秒</span></p></div>
       </section>
 
-      <section v-if="loading && orderedModels.length === 0" class="rounded-3xl border border-[#d9e4d7] bg-white/75 p-12 text-center text-sm text-[#789088] shadow-sm">正在检测模型...</section>
-      <section v-else-if="orderedModels.length === 0" class="rounded-3xl border border-[#d9e4d7] bg-white/75 p-12 text-center text-sm text-[#789088] shadow-sm">暂无检测结果，请先在后台配置并启用检测策略。</section>
+      <section v-if="loading && orderedModels.length === 0" class="rounded-3xl border border-[#d9e4d7] bg-white/75 p-12 text-center text-sm text-[#789088] shadow-sm">正在读取后端检测结果...</section>
+      <section v-else-if="orderedModels.length === 0" class="rounded-3xl border border-[#d9e4d7] bg-white/75 p-12 text-center text-sm text-[#789088] shadow-sm">暂无后端检测结果，请先在后台配置并启用检测。</section>
       <section v-else class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         <article v-for="(model, index) in orderedModels" :key="`${model.connectionId}:${model.modelName}`" class="group relative overflow-hidden rounded-[1.75rem] border border-[#d9e4d7] bg-white shadow-[0_18px_40px_rgba(61,93,72,0.12)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_24px_55px_rgba(61,93,72,0.2)]" :title="`${model.modelName} · ${formatTime(model.lastProbeAt)} · ${model.qualityReason || errorReason(model.errorKey) || '暂无判定原因'}`">
           <div class="pointer-events-none absolute -right-12 top-5 z-10 w-40 rotate-45 py-2 text-center text-xs font-bold tracking-wide shadow-sm" :class="qualityClass(model.qualityStatus, model.state)"><Brain class="mr-1 inline h-3.5 w-3.5" />{{ qualityLabel(model.qualityStatus, model.state) }}</div>
@@ -115,7 +145,20 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
           <div class="pointer-events-none absolute inset-x-4 bottom-4 translate-y-2 rounded-xl bg-[#213b35] px-3 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition duration-200 group-hover:translate-y-0 group-hover:opacity-100">{{ model.qualityReason || '暂无判定原因' }} · {{ formatTime(model.lastProbeAt) }}</div>
         </article>
       </section>
-      <p class="mt-5 text-right text-xs text-[#8aa095]">每 {{ data.refreshIntervalSeconds }} 秒自动检测一次 · 看板更新时间：{{ data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-' }}</p>
+
+      <section v-if="logs.length" class="mt-7 overflow-hidden rounded-3xl border border-[#d9e4d7] bg-white/80 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[#e4ece1] px-5 py-4">
+          <div><h2 class="font-semibold text-[#31584b]">检测日志</h2><p class="mt-1 text-xs text-[#8aa095]">日志由后端按配置间隔生成，刷新页面不会重复请求上游。</p></div>
+          <span class="text-xs text-[#8aa095]">最近 {{ logs.length }} 条</span>
+        </div>
+        <div class="divide-y divide-[#edf1eb]">
+          <div v-for="entry in logs" :key="entry.id" class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+            <div class="flex min-w-0 items-center gap-3"><span class="h-2.5 w-2.5 shrink-0 rounded-full" :class="entry.healthy ? 'bg-emerald-600' : 'bg-rose-600'" /><div class="min-w-0"><p class="truncate font-medium text-[#31584b]">{{ entry.modelName }} <span class="ml-1 text-xs" :class="logClass(entry)">{{ logLabel(entry) }}</span></p><p class="truncate text-xs text-[#8aa095]">{{ entry.qualityReason || errorReason(entry.errorKey) || entry.errorDetail || '暂无附加信息' }}</p></div></div>
+            <div class="flex shrink-0 items-center gap-3 text-right text-xs text-[#789088]"><span v-if="entry.latencyMs">{{ entry.firstByteLatencyMs ? `首字 ${formatDuration(entry.firstByteLatencyMs)} · ` : '' }}总耗时 {{ formatDuration(entry.latencyMs) }}</span><time :datetime="entry.probedAt">{{ formatTime(entry.probedAt) }}</time></div>
+          </div>
+        </div>
+      </section>
+      <p class="mt-5 text-right text-xs text-[#8aa095]">每 {{ data.refreshIntervalSeconds }} 秒自动刷新结果 · 看板更新时间：{{ data.generatedAt ? new Date(data.generatedAt).toLocaleString() : '-' }}</p>
     </div>
   </main>
 </template>

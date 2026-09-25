@@ -115,6 +115,9 @@ func (s *Service) runSchedulerTickSafely(ctx context.Context) {
 // runSchedulerTick 扫描全部已启用策略、旧版 target 分配和新版 admin 分组分配，按 workspace
 // 生成独立探活目标。分组新增的账号/渠道会在下一轮扫描时自动继承，无需写入额外 target 行。
 func (s *Service) runSchedulerTick(ctx context.Context) {
+	// 嵌入看板的自定义检测独立于策略分配：即使管理员没有配置普通健康策略，
+	// 只要启用了嵌入检测，后台仍按各自间隔执行并落库，前端只读取持久化结果。
+	s.runEmbedHealthChecks(ctx)
 	if s.platformGroups == nil {
 		return
 	}
@@ -183,6 +186,48 @@ func (s *Service) runSchedulerTick(ctx context.Context) {
 		go s.runAdminProbeJob(ctx, j, globalSem, wsSem, &wg)
 	}
 	wg.Wait()
+}
+
+type embedHealthSchedulerRepository interface {
+	ListEnabledEmbedHealthConfigs(context.Context) ([]EmbedHealthConfig, error)
+	ListEmbedHealthLogs(context.Context, string, string, int) ([]EmbedHealthLog, error)
+	InsertEmbedHealthLog(context.Context, EmbedHealthLog, string, string) error
+}
+
+func (s *Service) runEmbedHealthChecks(ctx context.Context) {
+	repo, ok := s.repo.(embedHealthSchedulerRepository)
+	if !ok || s.probeRunner == nil {
+		return
+	}
+	configs, err := repo.ListEnabledEmbedHealthConfigs(ctx)
+	if err != nil {
+		log.Printf("[connection-health] list enabled embed configs failed: %v", err)
+		return
+	}
+	for _, config := range configs {
+		logs, err := repo.ListEmbedHealthLogs(ctx, config.UserID, config.AdminAccountID, 1)
+		if err != nil {
+			log.Printf("[connection-health] list embed health logs failed user_id=%s admin_account_id=%s err=%v", config.UserID, config.AdminAccountID, err)
+			continue
+		}
+		if len(logs) > 0 && time.Since(logs[0].ProbedAt) < time.Duration(normalizeEmbedInterval(config.RefreshIntervalSeconds))*time.Second {
+			continue
+		}
+		result, testErr := s.testEmbedConfig(ctx, config)
+		if result.ProbedAt.IsZero() {
+			result.ProbedAt = time.Now()
+		}
+		if testErr != nil {
+			// 配置/解密错误也要进入日志，方便管理员知道为什么没有产生正常检测结果。
+			result.ErrorKey = testErr.Error()
+			result.Result = ResultUnsupported
+			result.Healthy = false
+		}
+		entry := embedHealthLogFromResult(result)
+		if err := repo.InsertEmbedHealthLog(ctx, entry, config.UserID, config.AdminAccountID); err != nil {
+			log.Printf("[connection-health] persist scheduled embed health log failed user_id=%s admin_account_id=%s err=%v", config.UserID, config.AdminAccountID, err)
+		}
+	}
 }
 
 // runAdminProbeJob 处理单个目标的到期任务：先解析一次凭据；凭据不可用时对每个到期模型记录

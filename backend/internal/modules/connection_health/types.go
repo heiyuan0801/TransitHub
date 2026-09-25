@@ -81,10 +81,28 @@ type EmbedHealthResponse struct {
 	GeneratedAt            time.Time          `json:"generatedAt"`
 	RefreshIntervalSeconds int                `json:"refreshIntervalSeconds"`
 	Models                 []EmbedHealthModel `json:"models"`
+	Logs                   []EmbedHealthLog   `json:"logs"`
 }
 
-// EmbedHealthTestResult 是管理员点击「测试」时返回的一次性探活结果。
-// 结果不会落库，也不会包含 API Key；它只用于确认当前嵌入配置可以正常调用上游。
+// EmbedHealthLog 是一次嵌入检测的脱敏记录。它既用于管理员手动测试，也用于后台调度
+// 后在嵌入页展示最近的成功/失败结果；不包含 API Key 或上游完整响应。
+type EmbedHealthLog struct {
+	ID                 string    `json:"id"`
+	ModelName          string    `json:"modelName"`
+	Result             ResultKey `json:"result"`
+	Healthy            bool      `json:"healthy"`
+	FirstByteLatencyMs *int      `json:"firstByteLatencyMs,omitempty"`
+	LatencyMs          int       `json:"latencyMs"`
+	ErrorKey           string    `json:"errorKey,omitempty"`
+	ErrorDetail        string    `json:"errorDetail,omitempty"`
+	QualityStatus      string    `json:"qualityStatus,omitempty"`
+	QualityScore       int       `json:"qualityScore,omitempty"`
+	QualityReason      string    `json:"qualityReason,omitempty"`
+	ProbedAt           time.Time `json:"probedAt"`
+}
+
+// EmbedHealthTestResult 是管理员点击「测试」时返回的一次探活结果。
+// 该结果同时会写入嵌入检测日志，不包含 API Key。
 type EmbedHealthTestResult struct {
 	ModelName          string    `json:"modelName"`
 	Result             ResultKey `json:"result"`

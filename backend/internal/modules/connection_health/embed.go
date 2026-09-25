@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"net/url"
 	"sort"
 	"strings"
@@ -22,6 +23,9 @@ type embedConfigRepository interface {
 	GetEmbedHealthConfigByToken(context.Context, string) (*EmbedHealthConfig, error)
 	SaveEmbedHealthConfig(context.Context, string, string, EmbedHealthConfig) error
 	RotateEmbedHealthToken(context.Context, string, string, string) error
+	ListEmbedHealthLogs(context.Context, string, string, int) ([]EmbedHealthLog, error)
+	InsertEmbedHealthLog(context.Context, EmbedHealthLog, string, string) error
+	ListEnabledEmbedHealthConfigs(context.Context) ([]EmbedHealthConfig, error)
 }
 
 func (s *Service) embedRepository() (embedConfigRepository, error) {
@@ -210,26 +214,7 @@ func (s *Service) RotateEmbedHealthToken(ctx context.Context, userID string) (Em
 	return config, nil
 }
 
-// TestEmbedHealth 执行一次管理员主动发起的自定义嵌入检测。
-// 它不写入健康状态或事件，只返回本次调用结果，适合在保存配置后验证 URL、Key 和模型。
-func (s *Service) TestEmbedHealth(ctx context.Context, userID string) (EmbedHealthTestResult, error) {
-	config, err := s.GetEmbedHealthConfig(ctx, userID)
-	if err != nil {
-		return EmbedHealthTestResult{}, err
-	}
-	if !config.CustomCheckEnabled || !config.CustomAPIKeyConfigured ||
-		strings.TrimSpace(config.CustomBaseURL) == "" || strings.TrimSpace(config.CustomModel) == "" {
-		return EmbedHealthTestResult{}, requestError(ErrorEmbedCustomConfigInvalid)
-	}
-	apiKey, err := s.decryptCustomAPIKey(config)
-	if err != nil {
-		return EmbedHealthTestResult{}, err
-	}
-	outcome := s.probeRunner.Probe(ctx, ProbeRequest{
-		BaseURL: config.CustomBaseURL, UpstreamKey: apiKey, ProviderFamily: config.CustomProviderFamily,
-		ModelName: config.CustomModel, MaxTokens: defaultProbeMaxTokens,
-	})
-	probedAt := time.Now()
+func embedHealthResult(config EmbedHealthConfig, outcome ProbeOutcome, probedAt time.Time) EmbedHealthTestResult {
 	var firstByteLatencyMs *int
 	if outcome.FirstByteLatencyMs > 0 {
 		firstByteLatencyMs = intPtr(outcome.FirstByteLatencyMs)
@@ -237,10 +222,86 @@ func (s *Service) TestEmbedHealth(ctx context.Context, userID string) (EmbedHeal
 	return EmbedHealthTestResult{
 		ModelName: config.CustomModel, Result: outcome.Result, Healthy: outcome.Result == ResultOK,
 		FirstByteLatencyMs: firstByteLatencyMs, LatencyMs: outcome.LatencyMs,
-		ErrorKey: string(outcome.Result), ErrorDetail: outcome.Detail,
+		ErrorKey: string(outcome.Result), ErrorDetail: truncate(outcome.Detail, 500),
 		QualityStatus: outcome.QualityStatus, QualityScore: outcome.QualityScore,
 		QualityReason: outcome.QualityReason, ProbedAt: probedAt,
-	}, nil
+	}
+}
+
+func embedHealthLogFromResult(result EmbedHealthTestResult) EmbedHealthLog {
+	return EmbedHealthLog{
+		ID: newEmbedLogID(), ModelName: result.ModelName, Result: result.Result, Healthy: result.Healthy,
+		FirstByteLatencyMs: result.FirstByteLatencyMs, LatencyMs: result.LatencyMs,
+		ErrorKey: result.ErrorKey, ErrorDetail: truncate(result.ErrorDetail, 500),
+		QualityStatus: result.QualityStatus, QualityScore: result.QualityScore,
+		QualityReason: result.QualityReason, ProbedAt: result.ProbedAt,
+	}
+}
+
+func newEmbedLogID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return hex.EncodeToString([]byte(time.Now().UTC().Format(time.RFC3339Nano)))
+	}
+	return hex.EncodeToString(buf)
+}
+
+func embedModelFromLog(logEntry EmbedHealthLog) EmbedHealthModel {
+	state := StateDegraded
+	if logEntry.Healthy {
+		state = StateHealthy
+	}
+	return EmbedHealthModel{
+		ConnectionID: "custom", GroupName: "custom", ModelName: logEntry.ModelName, State: state,
+		FirstByteLatencyMs: logEntry.FirstByteLatencyMs, LatencyMs: intPtr(logEntry.LatencyMs),
+		LastProbeAt: &logEntry.ProbedAt, ErrorKey: logEntry.ErrorKey,
+		QualityStatus: logEntry.QualityStatus, QualityScore: logEntry.QualityScore, QualityReason: logEntry.QualityReason,
+	}
+}
+
+func (s *Service) testEmbedConfig(ctx context.Context, config EmbedHealthConfig) (EmbedHealthTestResult, error) {
+	if !config.CustomCheckEnabled || !config.CustomAPIKeyConfigured ||
+		strings.TrimSpace(config.CustomBaseURL) == "" || strings.TrimSpace(config.CustomModel) == "" {
+		return EmbedHealthTestResult{ModelName: config.CustomModel, Result: ResultUnsupported, Healthy: false, ErrorKey: ErrorEmbedCustomConfigInvalid, ProbedAt: time.Now()}, requestError(ErrorEmbedCustomConfigInvalid)
+	}
+	apiKey, err := s.decryptCustomAPIKey(config)
+	if err != nil {
+		return EmbedHealthTestResult{ModelName: config.CustomModel, Result: ResultUnsupported, Healthy: false, ErrorKey: err.Error(), ProbedAt: time.Now()}, err
+	}
+	outcome := s.probeRunner.Probe(ctx, ProbeRequest{
+		BaseURL: config.CustomBaseURL, UpstreamKey: apiKey, ProviderFamily: config.CustomProviderFamily,
+		ModelName: config.CustomModel, MaxTokens: defaultProbeMaxTokens,
+	})
+	return embedHealthResult(config, outcome, time.Now()), nil
+}
+
+func (s *Service) persistEmbedHealthLog(ctx context.Context, config EmbedHealthConfig, result EmbedHealthTestResult) {
+	repo, err := s.embedRepository()
+	if err != nil {
+		return
+	}
+	if err := repo.InsertEmbedHealthLog(ctx, embedHealthLogFromResult(result), config.UserID, config.AdminAccountID); err != nil {
+		// A failed log write should not hide the actual upstream result from an admin test.
+		// The scheduler logs this separately when it is running in the background.
+		log.Printf("[connection-health] persist embed health log failed: %v", err)
+	}
+}
+
+// TestEmbedHealth 执行一次管理员主动发起的自定义嵌入检测，并记录成功或失败日志。
+func (s *Service) TestEmbedHealth(ctx context.Context, userID string) (EmbedHealthTestResult, error) {
+	config, err := s.GetEmbedHealthConfig(ctx, userID)
+	if err != nil {
+		return EmbedHealthTestResult{}, err
+	}
+	result, testErr := s.testEmbedConfig(ctx, config)
+	if result.ProbedAt.IsZero() {
+		result.ProbedAt = time.Now()
+	}
+	s.persistEmbedHealthLog(ctx, config, result)
+	if testErr != nil {
+		return EmbedHealthTestResult{}, testErr
+	}
+	return result, nil
 }
 
 func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealthResponse, error) {
@@ -285,30 +346,19 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 			QualityReason: state.QualityReason,
 		})
 	}
-	if config.CustomCheckEnabled && config.CustomAPIKeyConfigured && strings.TrimSpace(config.CustomBaseURL) != "" && strings.TrimSpace(config.CustomModel) != "" {
-		apiKey, keyErr := s.decryptCustomAPIKey(*config)
-		if keyErr != nil {
-			return EmbedHealthResponse{}, keyErr
+	logs, err := repo.ListEmbedHealthLogs(ctx, config.UserID, config.AdminAccountID, 20)
+	if err != nil {
+		return EmbedHealthResponse{}, err
+	}
+	if config.CustomCheckEnabled && strings.TrimSpace(config.CustomModel) != "" {
+		if len(logs) > 0 {
+			models = append(models, embedModelFromLog(logs[0]))
+		} else {
+			models = append(models, EmbedHealthModel{
+				ConnectionID: "custom", GroupName: "custom", ModelName: config.CustomModel,
+				State: StateObserving, ErrorKey: "not_probed", QualityStatus: "unknown",
+			})
 		}
-		outcome := s.probeRunner.Probe(ctx, ProbeRequest{
-			BaseURL: config.CustomBaseURL, UpstreamKey: apiKey, ProviderFamily: config.CustomProviderFamily,
-			ModelName: config.CustomModel, MaxTokens: defaultProbeMaxTokens,
-		})
-		customState := StateDegraded
-		if outcome.Result == ResultOK {
-			customState = StateHealthy
-		}
-		probedAt := time.Now()
-		var firstByteLatencyMs *int
-		if outcome.FirstByteLatencyMs > 0 {
-			firstByteLatencyMs = intPtr(outcome.FirstByteLatencyMs)
-		}
-		models = append(models, EmbedHealthModel{
-			ConnectionID: "custom", GroupName: "custom", ModelName: config.CustomModel, State: customState,
-			FirstByteLatencyMs: firstByteLatencyMs,
-			LatencyMs:          intPtr(outcome.LatencyMs), LastProbeAt: &probedAt, ErrorKey: string(outcome.Result), QualityStatus: outcome.QualityStatus,
-			QualityScore: outcome.QualityScore, QualityReason: outcome.QualityReason,
-		})
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].GroupName != models[j].GroupName {
@@ -319,7 +369,7 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 		}
 		return models[i].ModelName < models[j].ModelName
 	})
-	return EmbedHealthResponse{GeneratedAt: time.Now(), RefreshIntervalSeconds: normalizeEmbedInterval(config.RefreshIntervalSeconds), Models: models}, nil
+	return EmbedHealthResponse{GeneratedAt: time.Now(), RefreshIntervalSeconds: normalizeEmbedInterval(config.RefreshIntervalSeconds), Models: models, Logs: logs}, nil
 }
 
 func (s *Service) FrameAncestorOrigin(ctx context.Context, token string) (string, bool) {

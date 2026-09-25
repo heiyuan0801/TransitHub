@@ -293,7 +293,10 @@ func classifyModelQuality(prompt string, body []byte) (string, int, string) {
 	if strings.Contains(lower, "无法") || strings.Contains(lower, "不能") || strings.Contains(lower, "抱歉") || strings.Contains(lower, "i can't") || strings.Contains(lower, "i cannot") {
 		return "degraded", 20, "模型拒绝生成目标内容"
 	}
-	if strings.Contains(lower, "http://") || strings.Contains(lower, "https://") || strings.Contains(lower, "<link ") {
+	// SVG 文档自身通常带有 W3C 命名空间 URL，这不是外部资源，不能因此把完整
+	// 的单文件 HTML 判为降级。只检查去掉标准命名空间后仍存在的网络 URL。
+	withoutNamespaces := strings.ReplaceAll(strings.ReplaceAll(lower, "http://www.w3.org/2000/svg", ""), "http://www.w3.org/1999/xlink", "")
+	if strings.Contains(withoutNamespaces, "http://") || strings.Contains(withoutNamespaces, "https://") || strings.Contains(lower, "<link ") || strings.Contains(lower, "@import") {
 		return "degraded", 30, "HTML 依赖外部资源"
 	}
 
@@ -304,7 +307,7 @@ func classifyModelQuality(prompt string, body []byte) (string, int, string) {
 	if strings.Contains(lower, "<svg") {
 		score += 30
 	}
-	if strings.Contains(lower, "@keyframes") || strings.Contains(lower, "<animate") || strings.Contains(lower, "animation:") {
+	if strings.Contains(lower, "@keyframes") || strings.Contains(lower, "<animate") || strings.Contains(lower, "animation:") || strings.Contains(lower, "animation-name") || strings.Contains(lower, "transition:") || strings.Contains(lower, "requestanimationframe") || strings.Contains(lower, "setinterval(") || strings.Contains(lower, "settimeout(") {
 		score += 25
 	}
 	if strings.Contains(lower, "<style") || strings.Contains(lower, "<script") {

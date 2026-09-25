@@ -141,7 +141,7 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
           <div v-if="model.previewHtml" class="border-b border-[#e5ebe3] bg-[#dfe8dc] p-3">
             <div class="overflow-hidden rounded-2xl border border-[#cbd9c9] bg-white shadow-inner">
               <iframe
-                class="h-64 w-full bg-white sm:h-72"
+                class="h-48 w-full bg-white sm:h-56"
                 :srcdoc="model.previewHtml"
                 title="模型生成 HTML 预览"
                 sandbox="allow-scripts"

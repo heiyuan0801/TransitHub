@@ -68,6 +68,15 @@ func TestClassifyHTTPResponseCapturesGeneratedHTML(t *testing.T) {
 	}
 }
 
+func TestClassifyModelQualityIgnoresSVGNamespaceAndRecognizesJavaScriptAnimation(t *testing.T) {
+	content := `<!doctype html><html><head><style>body{animation-name:fade}</style></head><body><svg xmlns="http://www.w3.org/2000/svg"></svg><script>requestAnimationFrame(() => {})</script></body></html>`
+	body := []byte(`{"choices":[{"message":{"content":` + mustJSONString(content) + `}}]}`)
+	status, score, reason := classifyModelQuality(defaultProbePrompt, body)
+	if status != "not_degraded" || score < 90 {
+		t.Fatalf("expected complete self-contained animated HTML, got status=%s score=%d reason=%s", status, score, reason)
+	}
+}
+
 func TestProbe_DefaultModelPerProviderWhenModelNameEmpty(t *testing.T) {
 	cases := map[string]string{
 		ProviderGemini:    "gemini-1.5-flash",

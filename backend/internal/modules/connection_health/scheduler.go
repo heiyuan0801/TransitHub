@@ -212,7 +212,14 @@ func (s *Service) runEmbedHealthChecks(ctx context.Context) {
 			continue
 		}
 		previewMissing := len(logs) > 0 && logs[0].Healthy && strings.TrimSpace(logs[0].PreviewHTML) == ""
-		if len(logs) > 0 && !previewMissing && time.Since(logs[0].ProbedAt) < time.Duration(normalizeEmbedInterval(config.RefreshIntervalSeconds))*time.Second {
+		previewLower := ""
+		if len(logs) > 0 {
+			previewLower = strings.ToLower(logs[0].PreviewHTML)
+		}
+		qualityNeedsRecheck := len(logs) > 0 && logs[0].Healthy && logs[0].QualityStatus == "degraded" &&
+			((logs[0].QualityReason == "只满足部分 HTML/SVG 动画要求" && (strings.Contains(previewLower, "requestanimationframe") || strings.Contains(previewLower, "animation:") || strings.Contains(previewLower, "<animate"))) ||
+				(logs[0].QualityReason == "HTML 依赖外部资源" && strings.Contains(previewLower, "xmlns=\"http://www.w3.org/2000/svg\"")))
+		if len(logs) > 0 && !previewMissing && !qualityNeedsRecheck && time.Since(logs[0].ProbedAt) < time.Duration(normalizeEmbedInterval(config.RefreshIntervalSeconds))*time.Second {
 			continue
 		}
 		result, testErr := s.testEmbedConfig(ctx, config)

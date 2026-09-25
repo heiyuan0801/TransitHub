@@ -84,6 +84,12 @@ const routes = [
         component: () => import('./modules/admin/views/ConnectionHealthView.vue')
       },
       {
+        path: 'connection-health-embed',
+        name: 'AdminConnectionHealthEmbed',
+        meta: { requiresWorkspace: true },
+        component: () => import('./modules/admin/views/ConnectionHealthEmbedView.vue')
+      },
+      {
         path: 'group-rate-campaigns',
         name: 'AdminGroupRateCampaigns',
         meta: { requiresWorkspace: true },

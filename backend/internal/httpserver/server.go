@@ -516,11 +516,12 @@ func (s *Server) setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 		if s.connectionHealthFrameAncestorOrigin != nil {
 			origin, _ = s.connectionHealthFrameAncestorOrigin(r.Context(), r.URL.Query().Get("embed_token"))
 		}
-		if origin == "" {
-			w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
-			return
+		// An empty origin means the administrator intentionally allows the
+		// token-protected embed page to be framed from any site. Keep the CSP
+		// header absent in that case instead of blocking every frame.
+		if origin != "" {
+			w.Header().Set("Content-Security-Policy", "frame-ancestors "+origin)
 		}
-		w.Header().Set("Content-Security-Policy", "frame-ancestors "+origin)
 	}
 }
 

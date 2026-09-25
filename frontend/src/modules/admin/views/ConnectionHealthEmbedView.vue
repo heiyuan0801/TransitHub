@@ -189,6 +189,7 @@ onMounted(() => { void loadConfig() })
           <label class="space-y-1.5 text-sm">
             <span class="font-medium text-foreground">{{ t('admin.connectionHealth.embed.interval') }}</span>
             <input v-model.number="refreshInterval" type="number" min="10" max="3600" step="1" class="h-10 w-full rounded-lg border border-border/60 bg-background px-3 text-sm outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20">
+            <span class="text-xs text-muted-foreground">{{ t('admin.connectionHealth.embed.intervalHint') }}</span>
           </label>
         </div>
         <div class="mt-5 flex flex-wrap items-center gap-2">

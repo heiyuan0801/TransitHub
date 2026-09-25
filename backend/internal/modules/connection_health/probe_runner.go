@@ -19,6 +19,7 @@ const ProbeTimeout = 5 * time.Minute
 
 const defaultProbePrompt = `请生成可直接运行的单文件HTML，使用内联SVG绘制鹈鹕骑自行车的二维循环动画。画面以鹈鹕和自行车为主体，展示清晰的身体结构、踩踏动作和车轮转动，配合协调的背景、配色与层次。动画应流畅自然、衔接连续，并适配不同屏幕尺寸。禁止依赖外部资源，只输出完整HTML，不要代码围栏或解释文字。`
 const defaultProbeMaxTokens = 512
+const maxProbePreviewBytes = 1024 * 1024
 
 // ProbeRequest 是发起一次真实轻量探活所需的全部参数。UpstreamKey 只用于构造请求凭据，
 // 探活结果（ProbeOutcome）绝不回填明文 key。
@@ -173,6 +174,7 @@ func classifyStreamingResponse(resp *http.Response, upstreamKey string, started 
 	body := []byte(`{"choices":[{"message":{"content":` + mustJSONString(content.String()) + `}}]}`)
 	outcome := classifyHTTPResponse(resp.StatusCode, body, upstreamKey, latencyMs, prompt)
 	outcome.FirstByteLatencyMs = firstByteMs
+	outcome.GeneratedContent = truncate(content.String(), maxProbePreviewBytes)
 	return outcome
 }
 
@@ -233,7 +235,7 @@ func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs
 			return ProbeOutcome{Result: ResultInvalidResponse, LatencyMs: latencyMs, Detail: detail}
 		}
 		qualityStatus, qualityScore, qualityReason := classifyModelQuality(prompt, body)
-		return ProbeOutcome{Result: ResultOK, LatencyMs: latencyMs, Detail: "", QualityStatus: qualityStatus, QualityScore: qualityScore, QualityReason: qualityReason}
+		return ProbeOutcome{Result: ResultOK, LatencyMs: latencyMs, Detail: "", QualityStatus: qualityStatus, QualityScore: qualityScore, QualityReason: qualityReason, GeneratedContent: extractProbeContent(body)}
 
 	case status == http.StatusTooManyRequests:
 		return ProbeOutcome{Result: ResultRateLimited, LatencyMs: latencyMs, Detail: detail}
@@ -253,14 +255,7 @@ func classifyHTTPResponse(status int, body []byte, upstreamKey string, latencyMs
 	}
 }
 
-// classifyModelQuality 对需要生成 HTML/SVG 动画的检测提示词做结构化判定。
-// 这里只保存判定结果，不保存模型原文，避免把生成内容或密钥相关信息写入健康状态。
-func classifyModelQuality(prompt string, body []byte) (string, int, string) {
-	lowerPrompt := strings.ToLower(prompt)
-	if !strings.Contains(lowerPrompt, "html") || !strings.Contains(lowerPrompt, "svg") {
-		return "unknown", 0, "该探活提示词不是 HTML/SVG 质量检测提示词"
-	}
-
+func extractProbeContent(body []byte) string {
 	var payload struct {
 		Choices []struct {
 			Message struct {
@@ -270,14 +265,26 @@ func classifyModelQuality(prompt string, body []byte) (string, int, string) {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil || len(payload.Choices) == 0 {
-		return "degraded", 0, "响应缺少可读取的模型内容"
+		return ""
 	}
 	content := strings.TrimSpace(payload.Choices[0].Message.Content)
 	if content == "" {
 		content = strings.TrimSpace(payload.Choices[0].Text)
 	}
+	return content
+}
+
+// classifyModelQuality 对需要生成 HTML/SVG 动画的检测提示词做结构化判定。
+// 这里只保存判定结果，不保存模型原文，避免把生成内容或密钥相关信息写入健康状态。
+func classifyModelQuality(prompt string, body []byte) (string, int, string) {
+	lowerPrompt := strings.ToLower(prompt)
+	if !strings.Contains(lowerPrompt, "html") || !strings.Contains(lowerPrompt, "svg") {
+		return "unknown", 0, "该探活提示词不是 HTML/SVG 质量检测提示词"
+	}
+
+	content := extractProbeContent(body)
 	if content == "" {
-		return "degraded", 0, "模型没有返回 HTML 内容"
+		return "degraded", 0, "响应缺少可读取的模型内容"
 	}
 	lower := strings.ToLower(content)
 	if strings.Contains(content, "```") {

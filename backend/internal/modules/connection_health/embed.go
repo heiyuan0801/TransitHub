@@ -16,6 +16,7 @@ const (
 	defaultEmbedRefreshInterval = 30
 	minEmbedRefreshInterval     = 10
 	maxEmbedRefreshInterval     = 3600
+	maxEmbedPreviewBytes        = 512 * 1024
 )
 
 type embedConfigRepository interface {
@@ -224,8 +225,24 @@ func embedHealthResult(config EmbedHealthConfig, outcome ProbeOutcome, probedAt 
 		FirstByteLatencyMs: firstByteLatencyMs, LatencyMs: outcome.LatencyMs,
 		ErrorKey: string(outcome.Result), ErrorDetail: truncate(outcome.Detail, 500),
 		QualityStatus: outcome.QualityStatus, QualityScore: outcome.QualityScore,
-		QualityReason: outcome.QualityReason, ProbedAt: probedAt,
+		QualityReason: outcome.QualityReason, PreviewHTML: normalizeEmbedPreviewHTML(outcome.GeneratedContent), ProbedAt: probedAt,
 	}
+}
+
+func normalizeEmbedPreviewHTML(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, "```") {
+		if newline := strings.IndexByte(raw, '\n'); newline >= 0 {
+			raw = strings.TrimSpace(raw[newline+1:])
+		}
+		if strings.HasSuffix(raw, "```") {
+			raw = strings.TrimSpace(strings.TrimSuffix(raw, "```"))
+		}
+	}
+	if len(raw) > maxEmbedPreviewBytes {
+		raw = raw[:maxEmbedPreviewBytes]
+	}
+	return raw
 }
 
 func embedHealthLogFromResult(result EmbedHealthTestResult) EmbedHealthLog {
@@ -234,7 +251,7 @@ func embedHealthLogFromResult(result EmbedHealthTestResult) EmbedHealthLog {
 		FirstByteLatencyMs: result.FirstByteLatencyMs, LatencyMs: result.LatencyMs,
 		ErrorKey: result.ErrorKey, ErrorDetail: truncate(result.ErrorDetail, 500),
 		QualityStatus: result.QualityStatus, QualityScore: result.QualityScore,
-		QualityReason: result.QualityReason, ProbedAt: result.ProbedAt,
+		QualityReason: result.QualityReason, PreviewHTML: normalizeEmbedPreviewHTML(result.PreviewHTML), ProbedAt: result.ProbedAt,
 	}
 }
 
@@ -256,6 +273,7 @@ func embedModelFromLog(logEntry EmbedHealthLog) EmbedHealthModel {
 		FirstByteLatencyMs: logEntry.FirstByteLatencyMs, LatencyMs: intPtr(logEntry.LatencyMs),
 		LastProbeAt: &logEntry.ProbedAt, ErrorKey: logEntry.ErrorKey,
 		QualityStatus: logEntry.QualityStatus, QualityScore: logEntry.QualityScore, QualityReason: logEntry.QualityReason,
+		PreviewHTML: normalizeEmbedPreviewHTML(logEntry.PreviewHTML),
 	}
 }
 
@@ -359,6 +377,10 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 				State: StateObserving, ErrorKey: "not_probed", QualityStatus: "unknown",
 			})
 		}
+	}
+	// HTML 预览只放在模型卡片中，日志列表只传元数据，避免每次刷新重复传输多份大文档。
+	for i := range logs {
+		logs[i].PreviewHTML = ""
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].GroupName != models[j].GroupName {

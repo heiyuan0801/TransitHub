@@ -15,6 +15,7 @@ type Model = {
   qualityStatus?: 'not_degraded' | 'degraded' | 'unknown' | string
   qualityScore?: number
   qualityReason?: string
+  previewHtml?: string
 }
 type LogEntry = {
   id: string
@@ -136,6 +137,18 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
             <div class="absolute -right-8 -top-16 h-36 w-36 rotate-45 bg-[#2d7a5d]/10" />
             <p class="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#7d998b]">CHECK {{ String(index + 1).padStart(2, '0') }}</p>
             <div class="mt-4 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d2e5d5] text-[#2d7a5d]"><Activity class="h-5 w-5" /></span><div class="min-w-0"><h2 class="truncate pr-20 text-lg font-semibold text-[#213b35]">{{ model.modelName }}</h2><p class="truncate text-xs text-[#6d877b]">{{ model.groupName || '未命名分组' }}</p></div></div>
+          </div>
+          <div v-if="model.previewHtml" class="border-b border-[#e5ebe3] bg-[#dfe8dc] p-3">
+            <div class="overflow-hidden rounded-2xl border border-[#cbd9c9] bg-white shadow-inner">
+              <iframe
+                class="h-64 w-full bg-white sm:h-72"
+                :srcdoc="model.previewHtml"
+                title="模型生成 HTML 预览"
+                sandbox="allow-scripts"
+                referrerpolicy="no-referrer"
+              />
+            </div>
+            <p class="mt-2 text-center text-[11px] text-[#789088]">模型生成结果 · 已在隔离预览窗口中运行</p>
           </div>
           <div class="space-y-4 p-5">
             <div class="flex items-center justify-between gap-3"><span class="flex items-center gap-2 text-sm font-medium" :class="stateClass(model.state)"><component :is="healthIcon(model.state)" class="h-4 w-4" />{{ stateLabel(model.state) }}</span><span v-if="model.latencyMs != null" class="flex items-center gap-1 text-right text-xs text-[#789088]"><Clock3 class="h-4 w-4 shrink-0" /><span v-if="model.firstByteLatencyMs != null">首字 {{ formatDuration(model.firstByteLatencyMs) }} · 总耗时 {{ formatDuration(model.latencyMs) }}</span><span v-else>{{ formatDuration(model.latencyMs) }}</span></span></div>

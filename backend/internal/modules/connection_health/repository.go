@@ -249,9 +249,11 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 			quality_status text NOT NULL DEFAULT '',
 			quality_score integer NOT NULL DEFAULT 0,
 			quality_reason text NOT NULL DEFAULT '',
+			preview_html text NOT NULL DEFAULT '',
 			probed_at timestamptz NOT NULL DEFAULT now(),
 			created_at timestamptz NOT NULL DEFAULT now()
 		)`,
+		`ALTER TABLE connection_health_embed_logs ADD COLUMN IF NOT EXISTS preview_html text NOT NULL DEFAULT ''`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_embed_logs_workspace ON connection_health_embed_logs (user_id, admin_account_id, probed_at DESC)`,
 	}
 	for _, stmt := range statements {
@@ -702,11 +704,11 @@ func (r *Repository) InsertEmbedHealthLog(ctx context.Context, logEntry EmbedHea
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO connection_health_embed_logs (
 			id, user_id, admin_account_id, model_name, result, healthy, first_byte_latency_ms, latency_ms,
-			error_key, error_detail, quality_status, quality_score, quality_reason, probed_at, created_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
+			error_key, error_detail, quality_status, quality_score, quality_reason, preview_html, probed_at, created_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now())
 	`, logEntry.ID, userID, adminAccountID, logEntry.ModelName, logEntry.Result, logEntry.Healthy,
 		logEntry.FirstByteLatencyMs, logEntry.LatencyMs, logEntry.ErrorKey, truncate(logEntry.ErrorDetail, 500),
-		logEntry.QualityStatus, logEntry.QualityScore, truncate(logEntry.QualityReason, 500), logEntry.ProbedAt)
+		logEntry.QualityStatus, logEntry.QualityScore, truncate(logEntry.QualityReason, 500), normalizeEmbedPreviewHTML(logEntry.PreviewHTML), logEntry.ProbedAt)
 	return err
 }
 
@@ -716,7 +718,7 @@ func (r *Repository) ListEmbedHealthLogs(ctx context.Context, userID string, adm
 	}
 	rows, err := r.db.Query(ctx, `
 		SELECT id, model_name, result, healthy, first_byte_latency_ms, latency_ms,
-			error_key, error_detail, quality_status, quality_score, quality_reason, probed_at
+			error_key, error_detail, quality_status, quality_score, quality_reason, preview_html, probed_at
 		FROM connection_health_embed_logs
 		WHERE user_id = $1 AND admin_account_id = $2
 		ORDER BY probed_at DESC, created_at DESC
@@ -730,7 +732,7 @@ func (r *Repository) ListEmbedHealthLogs(ctx context.Context, userID string, adm
 	for rows.Next() {
 		var entry EmbedHealthLog
 		if err := rows.Scan(&entry.ID, &entry.ModelName, &entry.Result, &entry.Healthy, &entry.FirstByteLatencyMs, &entry.LatencyMs,
-			&entry.ErrorKey, &entry.ErrorDetail, &entry.QualityStatus, &entry.QualityScore, &entry.QualityReason, &entry.ProbedAt); err != nil {
+			&entry.ErrorKey, &entry.ErrorDetail, &entry.QualityStatus, &entry.QualityScore, &entry.QualityReason, &entry.PreviewHTML, &entry.ProbedAt); err != nil {
 			return nil, err
 		}
 		logs = append(logs, entry)

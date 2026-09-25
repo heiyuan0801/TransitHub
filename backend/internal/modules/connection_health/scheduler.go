@@ -3,6 +3,7 @@ package connection_health
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -210,7 +211,8 @@ func (s *Service) runEmbedHealthChecks(ctx context.Context) {
 			log.Printf("[connection-health] list embed health logs failed user_id=%s admin_account_id=%s err=%v", config.UserID, config.AdminAccountID, err)
 			continue
 		}
-		if len(logs) > 0 && time.Since(logs[0].ProbedAt) < time.Duration(normalizeEmbedInterval(config.RefreshIntervalSeconds))*time.Second {
+		previewMissing := len(logs) > 0 && logs[0].Healthy && strings.TrimSpace(logs[0].PreviewHTML) == ""
+		if len(logs) > 0 && !previewMissing && time.Since(logs[0].ProbedAt) < time.Duration(normalizeEmbedInterval(config.RefreshIntervalSeconds))*time.Second {
 			continue
 		}
 		result, testErr := s.testEmbedConfig(ctx, config)

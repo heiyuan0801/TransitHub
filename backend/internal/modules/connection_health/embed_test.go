@@ -23,3 +23,13 @@ func TestNormalizeAllowedOrigin(t *testing.T) {
 		t.Fatal("path origin should be rejected")
 	}
 }
+
+func TestNormalizeEmbedPreviewHTML(t *testing.T) {
+	got := normalizeEmbedPreviewHTML("```html\n<!doctype html><html><body>ok</body></html>\n```")
+	if got != "<!doctype html><html><body>ok</body></html>" {
+		t.Fatalf("unexpected normalized preview: %q", got)
+	}
+	if got := normalizeEmbedPreviewHTML("   "); got != "" {
+		t.Fatalf("blank preview = %q", got)
+	}
+}

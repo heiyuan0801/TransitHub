@@ -57,6 +57,17 @@ func TestProbe_AllProviderFamiliesUseOpenAICompatibleGatewayEndpoint(t *testing.
 	}
 }
 
+func TestClassifyHTTPResponseCapturesGeneratedHTML(t *testing.T) {
+	body := []byte(`{"choices":[{"message":{"content":"<!doctype html><html><svg></svg></html>"}}]}`)
+	outcome := classifyHTTPResponse(http.StatusOK, body, "key", 123, defaultProbePrompt)
+	if outcome.Result != ResultOK {
+		t.Fatalf("result = %s (%s)", outcome.Result, outcome.Detail)
+	}
+	if outcome.GeneratedContent == "" || !strings.Contains(outcome.GeneratedContent, "<svg>") {
+		t.Fatalf("generated content not captured: %q", outcome.GeneratedContent)
+	}
+}
+
 func TestProbe_DefaultModelPerProviderWhenModelNameEmpty(t *testing.T) {
 	cases := map[string]string{
 		ProviderGemini:    "gemini-1.5-flash",

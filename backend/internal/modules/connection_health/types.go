@@ -75,6 +75,7 @@ type EmbedHealthModel struct {
 	QualityStatus      string     `json:"qualityStatus"`
 	QualityScore       int        `json:"qualityScore"`
 	QualityReason      string     `json:"qualityReason,omitempty"`
+	PreviewHTML        string     `json:"previewHtml,omitempty"`
 }
 
 type EmbedHealthResponse struct {
@@ -98,6 +99,7 @@ type EmbedHealthLog struct {
 	QualityStatus      string    `json:"qualityStatus,omitempty"`
 	QualityScore       int       `json:"qualityScore,omitempty"`
 	QualityReason      string    `json:"qualityReason,omitempty"`
+	PreviewHTML        string    `json:"previewHtml,omitempty"`
 	ProbedAt           time.Time `json:"probedAt"`
 }
 
@@ -114,6 +116,7 @@ type EmbedHealthTestResult struct {
 	QualityStatus      string    `json:"qualityStatus,omitempty"`
 	QualityScore       int       `json:"qualityScore,omitempty"`
 	QualityReason      string    `json:"qualityReason,omitempty"`
+	PreviewHTML        string    `json:"previewHtml,omitempty"`
 	ProbedAt           time.Time `json:"probedAt"`
 }
 
@@ -350,6 +353,7 @@ type ProbeOutcome struct {
 	QualityStatus      string
 	QualityScore       int
 	QualityReason      string
+	GeneratedContent   string
 }
 
 // MySitesReader 是 connection_health 对 my_sites 模块的全部只读依赖，

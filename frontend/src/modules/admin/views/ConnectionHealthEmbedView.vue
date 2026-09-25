@@ -25,6 +25,13 @@ const message = ref('')
 const error = ref('')
 const testResult = ref<ConnectionHealthEmbedTestResult | null>(null)
 
+const errorMessage = (err: unknown, fallback: string) => {
+  const key = err instanceof Error ? err.message : fallback
+  // API 失败消息使用稳定的 i18n key；翻译不存在时保留原文，方便诊断未知错误。
+  if (key.startsWith('admin.') || key.startsWith('auth.')) return t(key)
+  return key
+}
+
 const normalizeConfig = (config: ConnectionHealthEmbedConfig): ConnectionHealthEmbedConfig => ({
   ...config,
   customCheckEnabled: Boolean(config.customCheckEnabled),
@@ -42,7 +49,7 @@ const loadConfig = async () => {
     embedConfig.value = config
     refreshInterval.value = config.refreshIntervalSeconds
   } catch (err) {
-    error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.saveFailed')
+    error.value = errorMessage(err, t('admin.connectionHealth.embed.saveFailed'))
   } finally {
     loading.value = false
   }
@@ -81,7 +88,7 @@ const saveConfig = async (): Promise<boolean> => {
     message.value = t('admin.connectionHealth.embed.saved')
     return true
   } catch (err) {
-    error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.saveFailed')
+    error.value = errorMessage(err, t('admin.connectionHealth.embed.saveFailed'))
     return false
   } finally {
     saving.value = false
@@ -102,7 +109,7 @@ const testConfig = async () => {
       ? t('admin.connectionHealth.embed.testPassed')
       : t('admin.connectionHealth.embed.testFailed')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.testFailed')
+    error.value = errorMessage(err, t('admin.connectionHealth.embed.testFailed'))
   } finally {
     testing.value = false
   }
@@ -117,7 +124,7 @@ const rotateToken = async () => {
     embedConfig.value = normalizeConfig(await rotateConnectionHealthEmbedToken())
     message.value = t('admin.connectionHealth.embed.generated')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.saveFailed')
+    error.value = errorMessage(err, t('admin.connectionHealth.embed.saveFailed'))
   } finally {
     rotating.value = false
   }

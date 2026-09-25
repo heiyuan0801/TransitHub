@@ -15,7 +15,7 @@ import (
 
 // ProbeTimeout 是单次真实探活请求的总超时时间。模型检测使用 SSE 流式响应，
 // 代码生成模型可能需要超过一分钟才完成，因此不能用短连接超时误判为降级。
-const ProbeTimeout = 2 * time.Minute
+const ProbeTimeout = 5 * time.Minute
 
 const defaultProbePrompt = `请生成可直接运行的单文件HTML，使用内联SVG绘制鹈鹕骑自行车的二维循环动画。画面以鹈鹕和自行车为主体，展示清晰的身体结构、踩踏动作和车轮转动，配合协调的背景、配色与层次。动画应流畅自然、衔接连续，并适配不同屏幕尺寸。禁止依赖外部资源，只输出完整HTML，不要代码围栏或解释文字。`
 const defaultProbeMaxTokens = 512

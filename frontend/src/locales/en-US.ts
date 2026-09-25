@@ -1210,6 +1210,13 @@ export default {
         customConfigured: 'API key configured',
         customNotConfigured: 'API key not configured',
         customSaved: 'Custom check saved',
+        test: 'Test',
+        testing: 'Testing...',
+        testPassed: 'Test passed',
+        testFailed: 'Test failed',
+        testResult: 'Test result',
+        firstByte: 'First byte',
+        totalLatency: 'Total time',
         generate: 'Generate embed',
         generateHint: 'Save first, then generate iframe code with an access token.',
         invalidCustom: 'Enter a valid API URL, key, and model name.',
@@ -1450,7 +1457,10 @@ export default {
         manualModelsRequired: 'Please select at least one model before starting the test.',
         policyNotFound: 'The selected policy does not exist or is not in the current workspace.',
         embedInvalidOrigin: 'The embed origin must be a complete http or https origin.',
-        embedInvalidInterval: 'The refresh interval must be between 10 and 3600 seconds.'
+        embedInvalidInterval: 'The refresh interval must be between 10 and 3600 seconds.',
+        embedEncryptionUnavailable: 'SMTP_ENCRYPTION_KEY is not configured; the API key cannot be stored or tested securely.',
+        embedSecretDecryptFailed: 'The saved API key cannot be decrypted. Enter and save it again.',
+        embedCustomConfigInvalid: 'Enable custom check and fill in the API URL, key, and model name first.'
       }
     },
       upstream: {

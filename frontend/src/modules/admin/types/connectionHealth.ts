@@ -329,3 +329,17 @@ export interface ConnectionHealthEmbedConfig {
   createdAt: string
   updatedAt: string
 }
+
+export interface ConnectionHealthEmbedTestResult {
+  modelName: string
+  result: string
+  healthy: boolean
+  firstByteLatencyMs?: number | null
+  latencyMs: number
+  errorKey?: string
+  errorDetail?: string
+  qualityStatus?: string
+  qualityScore?: number
+  qualityReason?: string
+  probedAt: string
+}

@@ -83,6 +83,22 @@ type EmbedHealthResponse struct {
 	Models                 []EmbedHealthModel `json:"models"`
 }
 
+// EmbedHealthTestResult 是管理员点击「测试」时返回的一次性探活结果。
+// 结果不会落库，也不会包含 API Key；它只用于确认当前嵌入配置可以正常调用上游。
+type EmbedHealthTestResult struct {
+	ModelName          string    `json:"modelName"`
+	Result             ResultKey `json:"result"`
+	Healthy            bool      `json:"healthy"`
+	FirstByteLatencyMs *int      `json:"firstByteLatencyMs,omitempty"`
+	LatencyMs          int       `json:"latencyMs"`
+	ErrorKey           string    `json:"errorKey,omitempty"`
+	ErrorDetail        string    `json:"errorDetail,omitempty"`
+	QualityStatus      string    `json:"qualityStatus,omitempty"`
+	QualityScore       int       `json:"qualityScore,omitempty"`
+	QualityReason      string    `json:"qualityReason,omitempty"`
+	ProbedAt           time.Time `json:"probedAt"`
+}
+
 // ProviderFamily 探活请求的最小形态按此分类选择。
 const (
 	ProviderGemini    = "gemini"

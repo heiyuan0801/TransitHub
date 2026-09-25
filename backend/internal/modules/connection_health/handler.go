@@ -39,6 +39,7 @@ func RegisterRoutes(mux *http.ServeMux, service *Service) {
 	mux.HandleFunc("GET /api/connection-health/embed-config", handler.getEmbedConfig)
 	mux.HandleFunc("PUT /api/connection-health/embed-config", handler.updateEmbedConfig)
 	mux.HandleFunc("POST /api/connection-health/embed-config/rotate-token", handler.rotateEmbedToken)
+	mux.HandleFunc("POST /api/connection-health/embed-config/test", handler.testEmbedConfig)
 	mux.HandleFunc("GET /api/embed/connection-health", handler.getEmbedData)
 }
 
@@ -87,6 +88,20 @@ func (h *Handler) rotateEmbedToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpjson.Write(w, http.StatusOK, config)
+}
+
+func (h *Handler) testEmbedConfig(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authctx.UserID(r.Context())
+	if !ok {
+		httpjson.WriteError(w, http.StatusUnauthorized, "auth.errors.unauthorized")
+		return
+	}
+	result, err := h.service.TestEmbedHealth(r.Context(), userID)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	httpjson.Write(w, http.StatusOK, result)
 }
 
 func (h *Handler) getEmbedData(w http.ResponseWriter, r *http.Request) {

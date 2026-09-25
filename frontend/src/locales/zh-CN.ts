@@ -1210,6 +1210,13 @@ export default {
         customConfigured: '已配置 Key',
         customNotConfigured: '未配置 Key',
         customSaved: '自定义检测配置已保存',
+        test: '测试',
+        testing: '测试中...',
+        testPassed: '测试成功',
+        testFailed: '测试失败',
+        testResult: '测试结果',
+        firstByte: '首字',
+        totalLatency: '总耗时',
         generate: '生成嵌入',
         generateHint: '保存后生成带访问令牌的 iframe 代码。',
         invalidCustom: '请填写有效的 API 地址、Key 和模型名称。',
@@ -1450,7 +1457,10 @@ export default {
         manualModelsRequired: '请至少选择一个模型再开始测试。',
         policyNotFound: '所选策略不存在或不属于当前工作区。',
         embedInvalidOrigin: '嵌入来源必须是完整的 http 或 https 域名。',
-        embedInvalidInterval: '刷新间隔必须在 10 到 3600 秒之间。'
+        embedInvalidInterval: '刷新间隔必须在 10 到 3600 秒之间。',
+        embedEncryptionUnavailable: '服务器未配置 SMTP_ENCRYPTION_KEY，无法安全保存或测试 API Key。',
+        embedSecretDecryptFailed: '已保存的 API Key 无法解密，请重新填写并保存。',
+        embedCustomConfigInvalid: '请先启用自定义检测，并填写 API 地址、Key 和模型名称。'
       }
     },
       upstream: {

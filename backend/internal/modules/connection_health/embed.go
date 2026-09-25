@@ -210,6 +210,39 @@ func (s *Service) RotateEmbedHealthToken(ctx context.Context, userID string) (Em
 	return config, nil
 }
 
+// TestEmbedHealth 执行一次管理员主动发起的自定义嵌入检测。
+// 它不写入健康状态或事件，只返回本次调用结果，适合在保存配置后验证 URL、Key 和模型。
+func (s *Service) TestEmbedHealth(ctx context.Context, userID string) (EmbedHealthTestResult, error) {
+	config, err := s.GetEmbedHealthConfig(ctx, userID)
+	if err != nil {
+		return EmbedHealthTestResult{}, err
+	}
+	if !config.CustomCheckEnabled || !config.CustomAPIKeyConfigured ||
+		strings.TrimSpace(config.CustomBaseURL) == "" || strings.TrimSpace(config.CustomModel) == "" {
+		return EmbedHealthTestResult{}, requestError(ErrorEmbedCustomConfigInvalid)
+	}
+	apiKey, err := s.decryptCustomAPIKey(config)
+	if err != nil {
+		return EmbedHealthTestResult{}, err
+	}
+	outcome := s.probeRunner.Probe(ctx, ProbeRequest{
+		BaseURL: config.CustomBaseURL, UpstreamKey: apiKey, ProviderFamily: config.CustomProviderFamily,
+		ModelName: config.CustomModel, MaxTokens: defaultProbeMaxTokens,
+	})
+	probedAt := time.Now()
+	var firstByteLatencyMs *int
+	if outcome.FirstByteLatencyMs > 0 {
+		firstByteLatencyMs = intPtr(outcome.FirstByteLatencyMs)
+	}
+	return EmbedHealthTestResult{
+		ModelName: config.CustomModel, Result: outcome.Result, Healthy: outcome.Result == ResultOK,
+		FirstByteLatencyMs: firstByteLatencyMs, LatencyMs: outcome.LatencyMs,
+		ErrorKey: string(outcome.Result), ErrorDetail: outcome.Detail,
+		QualityStatus: outcome.QualityStatus, QualityScore: outcome.QualityScore,
+		QualityReason: outcome.QualityReason, ProbedAt: probedAt,
+	}, nil
+}
+
 func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealthResponse, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {

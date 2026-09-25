@@ -13,6 +13,7 @@ import type {
   PolicyInput,
   TargetPolicyAssignments,
   ConnectionHealthEmbedConfig,
+  ConnectionHealthEmbedTestResult,
 } from '../types/connectionHealth'
 import {
   authUnauthorizedErrorKey,
@@ -194,3 +195,6 @@ export const updateConnectionHealthEmbedConfig = async (input: {
 
 export const rotateConnectionHealthEmbedToken = async (): Promise<ConnectionHealthEmbedConfig> =>
   requestJson<ConnectionHealthEmbedConfig>('/connection-health/embed-config/rotate-token', { method: 'POST' })
+
+export const testConnectionHealthEmbed = async (): Promise<ConnectionHealthEmbedTestResult> =>
+  requestJson<ConnectionHealthEmbedTestResult>('/connection-health/embed-config/test', { method: 'POST' })

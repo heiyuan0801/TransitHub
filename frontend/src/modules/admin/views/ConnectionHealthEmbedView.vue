@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Check, Clipboard, Code2, Eye, KeyRound, Loader2, RefreshCw, Save } from 'lucide-vue-next'
+import { Check, Clipboard, Code2, Eye, KeyRound, Loader2, Play, RefreshCw, Save } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
   getConnectionHealthEmbedConfig,
   rotateConnectionHealthEmbedToken,
+  testConnectionHealthEmbed,
   updateConnectionHealthEmbedConfig,
 } from '../api/connectionHealth'
-import type { ConnectionHealthEmbedConfig } from '../types/connectionHealth'
+import type { ConnectionHealthEmbedConfig, ConnectionHealthEmbedTestResult } from '../types/connectionHealth'
 
 const { t } = useI18n()
 
@@ -17,10 +18,12 @@ const refreshInterval = ref(30)
 const customApiKey = ref('')
 const saving = ref(false)
 const rotating = ref(false)
+const testing = ref(false)
 const loading = ref(true)
 const copied = ref<'url' | 'iframe' | ''>('')
 const message = ref('')
 const error = ref('')
+const testResult = ref<ConnectionHealthEmbedTestResult | null>(null)
 
 const normalizeConfig = (config: ConnectionHealthEmbedConfig): ConnectionHealthEmbedConfig => ({
   ...config,
@@ -56,8 +59,8 @@ const iframeCode = computed(() => embedUrl.value
   ? `<iframe src="${embedUrl.value}" title="在线模型检测" style="width:100%;min-height:520px;border:0" loading="lazy"></iframe>`
   : '')
 
-const saveConfig = async () => {
-  if (!embedConfig.value || saving.value) return
+const saveConfig = async (): Promise<boolean> => {
+  if (!embedConfig.value || saving.value) return false
   saving.value = true
   message.value = ''
   error.value = ''
@@ -76,10 +79,32 @@ const saveConfig = async () => {
     refreshInterval.value = embedConfig.value.refreshIntervalSeconds
     customApiKey.value = ''
     message.value = t('admin.connectionHealth.embed.saved')
+    return true
   } catch (err) {
     error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.saveFailed')
+    return false
   } finally {
     saving.value = false
+  }
+}
+
+const testConfig = async () => {
+  if (testing.value || saving.value) return
+  testing.value = true
+  message.value = ''
+  error.value = ''
+  testResult.value = null
+  try {
+    // 测试前先保存当前表单，避免管理员修改 URL/模型后直接测试到旧配置。
+    if (!await saveConfig()) return
+    testResult.value = await testConnectionHealthEmbed()
+    message.value = testResult.value.healthy
+      ? t('admin.connectionHealth.embed.testPassed')
+      : t('admin.connectionHealth.embed.testFailed')
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : t('admin.connectionHealth.embed.testFailed')
+  } finally {
+    testing.value = false
   }
 }
 
@@ -198,11 +223,30 @@ onMounted(() => { void loadConfig() })
             <Save v-else class="h-4 w-4" />
             {{ saving ? t('admin.connectionHealth.embed.saving') : t('admin.connectionHealth.embed.save') }}
           </Button>
+          <Button variant="secondary" :disabled="saving || testing" @click="testConfig">
+            <Loader2 v-if="testing" class="h-4 w-4 animate-spin" />
+            <Play v-else class="h-4 w-4" />
+            {{ testing ? t('admin.connectionHealth.embed.testing') : t('admin.connectionHealth.embed.test') }}
+          </Button>
           <Button variant="secondary" :disabled="rotating" @click="rotateToken">
             <Loader2 v-if="rotating" class="h-4 w-4 animate-spin" />
             <RefreshCw v-else class="h-4 w-4" />
             {{ t('admin.connectionHealth.embed.rotate') }}
           </Button>
+        </div>
+        <div v-if="testResult" class="mt-4 rounded-lg border border-border/60 bg-surface/60 p-4 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-medium text-foreground">{{ t('admin.connectionHealth.embed.testResult') }} · {{ testResult.modelName }}</span>
+            <span :class="testResult.healthy ? 'text-emerald-600 dark:text-emerald-300' : 'text-destructive'">
+              {{ testResult.healthy ? t('admin.connectionHealth.embed.testPassed') : t('admin.connectionHealth.embed.testFailed') }}
+            </span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <span v-if="testResult.firstByteLatencyMs != null">{{ t('admin.connectionHealth.embed.firstByte') }} {{ testResult.firstByteLatencyMs }} ms</span>
+            <span>{{ t('admin.connectionHealth.embed.totalLatency') }} {{ testResult.latencyMs }} ms</span>
+            <span v-if="testResult.qualityReason">{{ testResult.qualityReason }}</span>
+          </div>
+          <p v-if="!testResult.healthy && testResult.errorDetail" class="mt-2 break-all text-xs text-destructive">{{ testResult.errorDetail }}</p>
         </div>
       </section>
 

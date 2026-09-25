@@ -64,6 +64,9 @@ func normalizeAllowedOrigin(raw string) (string, error) {
 
 func normalizeCustomBaseURL(raw string) (string, error) {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if strings.HasSuffix(strings.ToLower(raw), "/v1") {
+		raw = strings.TrimSuffix(raw, "/v1")
+	}
 	if raw == "" {
 		return "", nil
 	}

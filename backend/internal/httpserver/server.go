@@ -512,16 +512,10 @@ func (s *Server) setSecurityHeaders(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == "/embed/connection-health" {
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		origin := ""
-		if s.connectionHealthFrameAncestorOrigin != nil {
-			origin, _ = s.connectionHealthFrameAncestorOrigin(r.Context(), r.URL.Query().Get("embed_token"))
-		}
-		// An empty origin means the administrator intentionally allows the
-		// token-protected embed page to be framed from any site. Keep the CSP
-		// header absent in that case instead of blocking every frame.
-		if origin != "" {
-			w.Header().Set("Content-Security-Policy", "frame-ancestors "+origin)
-		}
+		// This page is protected by its per-workspace embed token. It is
+		// intentionally frameable from any site, so do not emit a
+		// frame-ancestors allowlist (including one left over from an older
+		// configuration).
 	}
 }
 

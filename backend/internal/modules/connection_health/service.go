@@ -2,11 +2,13 @@ package connection_health
 
 import (
 	"context"
+	"crypto/cipher"
 	"log"
 	"strings"
 	"time"
 
 	"transithub/backend/internal/modules/my_sites"
+	"transithub/backend/internal/modules/settings"
 )
 
 // healthRepository 是 Service 对存储层的全部依赖，由 *Repository 结构性满足。
@@ -64,6 +66,7 @@ type Service struct {
 	modelDiscovery  *ModelDiscoveryRunner
 	platformGroups  PlatformGroupReader
 	priorityActions TargetPriorityActioner
+	secretGCM       cipher.AEAD
 }
 
 func NewService(repo *Repository, mySites MySitesReader, sites SiteLookup, platform PlatformActioner) *Service {
@@ -89,6 +92,42 @@ func (s *Service) EnsureSchema(ctx context.Context) error {
 
 func (s *Service) SetAdminAccountResolver(accounts AdminAccountResolver) {
 	s.accounts = accounts
+}
+
+// SetSecretEncryptionKey installs the process-wide key used for workspace-scoped
+// custom probe API keys. It intentionally shares the SMTP key configuration so
+// deployments only need to manage one stable secret.
+func (s *Service) SetSecretEncryptionKey(raw string) error {
+	gcm, err := settings.ParseSMTPEncryptionKey(raw)
+	if err != nil {
+		return err
+	}
+	s.secretGCM = gcm
+	return nil
+}
+
+func (s *Service) encryptCustomAPIKey(userID, adminAccountID, raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", nil
+	}
+	if s.secretGCM == nil {
+		return "", requestError(ErrorEmbedEncryptionUnavailable)
+	}
+	return settings.EncryptSecret(s.secretGCM, userID, adminAccountID, raw)
+}
+
+func (s *Service) decryptCustomAPIKey(config EmbedHealthConfig) (string, error) {
+	if strings.TrimSpace(config.CustomAPIKeyCiphertext) == "" {
+		return "", nil
+	}
+	if s.secretGCM == nil {
+		return "", requestError(ErrorEmbedEncryptionUnavailable)
+	}
+	plaintext, err := settings.DecryptSecret(s.secretGCM, config.UserID, config.AdminAccountID, config.CustomAPIKeyCiphertext)
+	if err != nil {
+		return "", requestError(ErrorEmbedSecretDecryptFailed)
+	}
+	return plaintext, nil
 }
 
 func (s *Service) currentAdminAccountID(ctx context.Context, userID string) (string, error) {

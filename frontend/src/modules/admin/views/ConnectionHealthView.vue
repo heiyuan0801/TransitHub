@@ -66,6 +66,7 @@ const embedOrigin = ref('')
 const embedInterval = ref(30)
 const embedSaving = ref(false)
 const embedMessage = ref('')
+const customApiKey = ref('')
 
 const groupTypes = ['public', 'exclusive', 'subscription']
 const groupTypeLabel = (type: string): string => t(`admin.connectionHealth.groupTypes.${groupTypes.includes(type) ? type : 'public'}`)
@@ -120,7 +121,15 @@ const embedSnippet = computed(() => embedUrl.value ? `<iframe src="${embedUrl.va
 
 const loadEmbedConfig = async () => {
   try {
-    embedConfig.value = await getConnectionHealthEmbedConfig()
+    const config = await getConnectionHealthEmbedConfig()
+    embedConfig.value = {
+      ...config,
+      customCheckEnabled: Boolean(config.customCheckEnabled),
+      customBaseUrl: config.customBaseUrl ?? '',
+      customModel: config.customModel ?? '',
+      customProviderFamily: config.customProviderFamily || 'openai',
+      customApiKeyConfigured: Boolean(config.customApiKeyConfigured),
+    }
     embedOrigin.value = embedConfig.value.allowedOrigin
     embedInterval.value = embedConfig.value.refreshIntervalSeconds
   } catch {
@@ -137,11 +146,27 @@ const saveEmbedConfig = async () => {
       enabled: embedConfig.value.enabled,
       allowedOrigin: embedOrigin.value,
       refreshIntervalSeconds: embedInterval.value,
+      customCheckEnabled: embedConfig.value.customCheckEnabled,
+      customBaseUrl: embedConfig.value.customBaseUrl,
+      customApiKey: customApiKey.value,
+      customModel: embedConfig.value.customModel,
+      customProviderFamily: embedConfig.value.customProviderFamily,
     })
+    customApiKey.value = ''
     embedMessage.value = t('admin.connectionHealth.embed.saved')
   } catch {
     embedMessage.value = t('admin.connectionHealth.embed.saveFailed')
   } finally { embedSaving.value = false }
+}
+
+const copyEmbedSnippet = async () => {
+  if (!embedSnippet.value) return
+  try {
+    await navigator.clipboard.writeText(embedSnippet.value)
+    embedMessage.value = t('admin.connectionHealth.embed.copied')
+  } catch {
+    embedMessage.value = embedSnippet.value
+  }
 }
 
 const rotateEmbed = async () => {
@@ -330,8 +355,29 @@ const handleDeletePolicy = async (policy: ConnectionHealthPolicy) => {
           <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.allowedOrigin') }}</span><input v-model="embedOrigin" type="url" placeholder="https://example.com" class="h-9 w-56 rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
           <label class="flex h-9 items-center gap-2 text-sm text-foreground"><input v-model="embedConfig.enabled" type="checkbox" class="h-4 w-4">{{ t('admin.connectionHealth.embed.enabled') }}</label>
           <Button size="sm" :disabled="embedSaving" @click="saveEmbedConfig">{{ embedSaving ? t('admin.connectionHealth.embed.saving') : t('admin.connectionHealth.embed.save') }}</Button>
+          <Button variant="secondary" size="sm" :disabled="!embedSnippet || embedSaving" @click="copyEmbedSnippet">{{ t('admin.connectionHealth.embed.copy') }}</Button>
           <Button variant="secondary" size="sm" :disabled="embedSaving" @click="rotateEmbed">{{ t('admin.connectionHealth.embed.rotate') }}</Button>
         </div>
+      </div>
+      <div class="mt-4 rounded-lg border border-primary/20 bg-primary/[0.04] p-4">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-foreground">{{ t('admin.connectionHealth.embed.customTitle') }}</h3>
+            <p class="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">{{ t('admin.connectionHealth.embed.customDescription') }}</p>
+          </div>
+          <label class="flex items-center gap-2 text-sm text-foreground">
+            <input v-model="embedConfig.customCheckEnabled" type="checkbox" class="h-4 w-4">
+            {{ t('admin.connectionHealth.embed.customEnabled') }}
+          </label>
+        </div>
+        <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label class="text-xs text-muted-foreground md:col-span-2"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.customBaseUrl') }}</span><input v-model="embedConfig.customBaseUrl" type="url" :placeholder="t('admin.connectionHealth.embed.customBaseUrlPlaceholder')" class="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
+          <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.customApiKey') }}</span><input v-model="customApiKey" type="password" :placeholder="embedConfig.customApiKeyConfigured ? t('admin.connectionHealth.embed.customApiKeyPlaceholder') : 'sk-...'" autocomplete="new-password" class="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
+          <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.customModel') }}</span><input v-model="embedConfig.customModel" type="text" :placeholder="t('admin.connectionHealth.embed.customModelPlaceholder')" class="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"></label>
+          <label class="text-xs text-muted-foreground"><span class="mb-1 block">{{ t('admin.connectionHealth.embed.customProvider') }}</span><select v-model="embedConfig.customProviderFamily" class="h-9 w-full rounded-md border border-border/60 bg-background px-2 text-sm text-foreground"><option value="openai">OpenAI 兼容</option><option value="custom">自定义</option><option value="gemini">Gemini</option><option value="anthropic">Anthropic</option></select></label>
+          <span class="self-end text-xs text-muted-foreground">{{ embedConfig.customApiKeyConfigured ? t('admin.connectionHealth.embed.customConfigured') : t('admin.connectionHealth.embed.customNotConfigured') }}</span>
+        </div>
+        <p class="mt-3 text-xs text-muted-foreground">{{ t('admin.connectionHealth.embed.generateHint') }}</p>
       </div>
       <p v-if="embedMessage" class="mt-2 text-xs text-muted-foreground">{{ embedMessage }}</p>
     </section>

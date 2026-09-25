@@ -321,6 +321,11 @@ export interface ConnectionHealthEmbedConfig {
   allowedOrigin: string
   refreshIntervalSeconds: number
   embedUrl: string
+  customCheckEnabled: boolean
+  customBaseUrl: string
+  customModel: string
+  customProviderFamily: string
+  customApiKeyConfigured: boolean
   createdAt: string
   updatedAt: string
 }

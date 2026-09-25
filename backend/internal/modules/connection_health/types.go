@@ -41,6 +41,12 @@ type EmbedHealthConfig struct {
 	Enabled                bool      `json:"enabled"`
 	AllowedOrigin          string    `json:"allowedOrigin"`
 	RefreshIntervalSeconds int       `json:"refreshIntervalSeconds"`
+	CustomCheckEnabled     bool      `json:"customCheckEnabled"`
+	CustomBaseURL          string    `json:"customBaseUrl"`
+	CustomModel            string    `json:"customModel"`
+	CustomProviderFamily   string    `json:"customProviderFamily"`
+	CustomAPIKeyConfigured bool      `json:"customApiKeyConfigured"`
+	CustomAPIKeyCiphertext string    `json:"-"`
 	EmbedURL               string    `json:"embedUrl"`
 	CreatedAt              time.Time `json:"createdAt"`
 	UpdatedAt              time.Time `json:"updatedAt"`
@@ -50,6 +56,11 @@ type EmbedHealthConfigInput struct {
 	Enabled                *bool  `json:"enabled"`
 	AllowedOrigin          string `json:"allowedOrigin"`
 	RefreshIntervalSeconds int    `json:"refreshIntervalSeconds"`
+	CustomCheckEnabled     *bool  `json:"customCheckEnabled"`
+	CustomBaseURL          string `json:"customBaseUrl"`
+	CustomAPIKey           string `json:"customApiKey"`
+	CustomModel            string `json:"customModel"`
+	CustomProviderFamily   string `json:"customProviderFamily"`
 }
 
 type EmbedHealthModel struct {
@@ -117,10 +128,13 @@ const (
 	ErrorPolicyNotFound = "admin.connectionHealth.errors.policyNotFound"
 	// ErrorMultiplierRequired 表示用户尝试给没有有效倍率的分组启用倍率优先级策略。
 	// 前端应提示先在上游配置倍率；后端绝不使用 1x 等猜测值代替。
-	ErrorMultiplierRequired   = "admin.connectionHealth.errors.multiplierRequired"
-	ErrorEmbedInvalidOrigin   = "admin.connectionHealth.errors.embedInvalidOrigin"
-	ErrorEmbedInvalidInterval = "admin.connectionHealth.errors.embedInvalidInterval"
-	ErrorEmbedSessionInvalid  = "embed.connectionHealth.errors.sessionInvalid"
+	ErrorMultiplierRequired         = "admin.connectionHealth.errors.multiplierRequired"
+	ErrorEmbedInvalidOrigin         = "admin.connectionHealth.errors.embedInvalidOrigin"
+	ErrorEmbedInvalidInterval       = "admin.connectionHealth.errors.embedInvalidInterval"
+	ErrorEmbedEncryptionUnavailable = "admin.connectionHealth.errors.embedEncryptionUnavailable"
+	ErrorEmbedSecretDecryptFailed   = "admin.connectionHealth.errors.embedSecretDecryptFailed"
+	ErrorEmbedCustomConfigInvalid   = "admin.connectionHealth.errors.embedCustomConfigInvalid"
+	ErrorEmbedSessionInvalid        = "embed.connectionHealth.errors.sessionInvalid"
 )
 
 // PolicyAssignment 对应 connection_health_policy_assignments 表：一条「target 显式绑定某条策略」

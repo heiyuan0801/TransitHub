@@ -62,6 +62,18 @@ func normalizeAllowedOrigin(raw string) (string, error) {
 	return strings.ToLower(u.Scheme) + "://" + strings.ToLower(u.Host), nil
 }
 
+func normalizeCustomBaseURL(raw string) (string, error) {
+	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return "", requestError(ErrorEmbedCustomConfigInvalid)
+	}
+	return raw, nil
+}
+
 func setEmbedURL(config *EmbedHealthConfig) {
 	if config == nil || strings.TrimSpace(config.EmbedToken) == "" {
 		return
@@ -93,6 +105,10 @@ func (s *Service) GetEmbedHealthConfig(ctx context.Context, userID string) (Embe
 		}
 	}
 	config.RefreshIntervalSeconds = normalizeEmbedInterval(config.RefreshIntervalSeconds)
+	if strings.TrimSpace(config.CustomProviderFamily) == "" {
+		config.CustomProviderFamily = ProviderOpenAI
+	}
+	config.CustomAPIKeyConfigured = strings.TrimSpace(config.CustomAPIKeyCiphertext) != ""
 	setEmbedURL(config)
 	return *config, nil
 }
@@ -115,6 +131,39 @@ func (s *Service) UpdateEmbedHealthConfig(ctx context.Context, userID string, in
 		return EmbedHealthConfig{}, err
 	}
 	config.AllowedOrigin = origin
+	baseURL, err := normalizeCustomBaseURL(input.CustomBaseURL)
+	if err != nil {
+		return EmbedHealthConfig{}, err
+	}
+	if input.CustomBaseURL != "" {
+		config.CustomBaseURL = baseURL
+	}
+	if input.CustomModel != "" {
+		config.CustomModel = strings.TrimSpace(input.CustomModel)
+	}
+	if input.CustomProviderFamily != "" {
+		provider := strings.ToLower(strings.TrimSpace(input.CustomProviderFamily))
+		if provider != ProviderOpenAI && provider != ProviderGemini && provider != ProviderAnthropic && provider != ProviderCustom {
+			return EmbedHealthConfig{}, requestError(ErrorEmbedCustomConfigInvalid)
+		}
+		config.CustomProviderFamily = provider
+	}
+	if strings.TrimSpace(input.CustomAPIKey) != "" {
+		ciphertext, encryptErr := s.encryptCustomAPIKey(userID, adminAccountID, strings.TrimSpace(input.CustomAPIKey))
+		if encryptErr != nil {
+			return EmbedHealthConfig{}, encryptErr
+		}
+		config.CustomAPIKeyCiphertext = ciphertext
+	}
+	if input.CustomCheckEnabled != nil {
+		config.CustomCheckEnabled = *input.CustomCheckEnabled
+	}
+	if config.CustomCheckEnabled {
+		if strings.TrimSpace(config.CustomBaseURL) == "" || strings.TrimSpace(config.CustomModel) == "" || strings.TrimSpace(config.CustomAPIKeyCiphertext) == "" {
+			return EmbedHealthConfig{}, requestError(ErrorEmbedCustomConfigInvalid)
+		}
+	}
+	config.CustomAPIKeyConfigured = strings.TrimSpace(config.CustomAPIKeyCiphertext) != ""
 	if input.Enabled != nil {
 		config.Enabled = *input.Enabled
 	}
@@ -198,6 +247,26 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 			QualityStatus: state.QualityStatus,
 			QualityScore:  state.QualityScore,
 			QualityReason: state.QualityReason,
+		})
+	}
+	if config.CustomCheckEnabled && config.CustomAPIKeyConfigured && strings.TrimSpace(config.CustomBaseURL) != "" && strings.TrimSpace(config.CustomModel) != "" {
+		apiKey, keyErr := s.decryptCustomAPIKey(*config)
+		if keyErr != nil {
+			return EmbedHealthResponse{}, keyErr
+		}
+		outcome := s.probeRunner.Probe(ctx, ProbeRequest{
+			BaseURL: config.CustomBaseURL, UpstreamKey: apiKey, ProviderFamily: config.CustomProviderFamily,
+			ModelName: config.CustomModel, MaxTokens: defaultProbeMaxTokens,
+		})
+		customState := StateDegraded
+		if outcome.Result == ResultOK {
+			customState = StateHealthy
+		}
+		probedAt := time.Now()
+		models = append(models, EmbedHealthModel{
+			ConnectionID: "custom", GroupName: "custom", ModelName: config.CustomModel, State: customState,
+			LatencyMs: intPtr(outcome.LatencyMs), LastProbeAt: &probedAt, ErrorKey: string(outcome.Result), QualityStatus: outcome.QualityStatus,
+			QualityScore: outcome.QualityScore, QualityReason: outcome.QualityReason,
 		})
 	}
 	sort.Slice(models, func(i, j int) bool {

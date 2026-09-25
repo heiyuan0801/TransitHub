@@ -220,10 +220,20 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 			enabled boolean NOT NULL DEFAULT false,
 			allowed_origin text NOT NULL DEFAULT '',
 			refresh_interval_seconds integer NOT NULL DEFAULT 30,
+			custom_check_enabled boolean NOT NULL DEFAULT false,
+			custom_base_url text NOT NULL DEFAULT '',
+			custom_api_key_ciphertext text NOT NULL DEFAULT '',
+			custom_model text NOT NULL DEFAULT '',
+			custom_provider_family text NOT NULL DEFAULT 'openai',
 			created_at timestamptz NOT NULL DEFAULT now(),
 			updated_at timestamptz NOT NULL DEFAULT now(),
 			PRIMARY KEY (user_id, admin_account_id)
 		)`,
+		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_check_enabled boolean NOT NULL DEFAULT false`,
+		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_base_url text NOT NULL DEFAULT ''`,
+		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_api_key_ciphertext text NOT NULL DEFAULT ''`,
+		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_model text NOT NULL DEFAULT ''`,
+		`ALTER TABLE connection_health_embed_configs ADD COLUMN IF NOT EXISTS custom_provider_family text NOT NULL DEFAULT 'openai'`,
 		`CREATE INDEX IF NOT EXISTS idx_connection_health_embed_token ON connection_health_embed_configs (embed_token)`,
 	}
 	for _, stmt := range statements {
@@ -597,7 +607,9 @@ func (r *Repository) ListStatesByWorkspace(ctx context.Context, userID string, a
 
 func (r *Repository) GetEmbedHealthConfigByWorkspace(ctx context.Context, userID string, adminAccountID string) (*EmbedHealthConfig, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at
+		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds,
+			custom_check_enabled, custom_base_url, custom_api_key_ciphertext, custom_model, custom_provider_family,
+			created_at, updated_at
 		FROM connection_health_embed_configs WHERE user_id = $1 AND admin_account_id = $2
 	`, userID, adminAccountID)
 	return scanEmbedHealthConfig(row)
@@ -605,7 +617,9 @@ func (r *Repository) GetEmbedHealthConfigByWorkspace(ctx context.Context, userID
 
 func (r *Repository) GetEmbedHealthConfigByToken(ctx context.Context, token string) (*EmbedHealthConfig, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at
+		SELECT user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds,
+			custom_check_enabled, custom_base_url, custom_api_key_ciphertext, custom_model, custom_provider_family,
+			created_at, updated_at
 		FROM connection_health_embed_configs WHERE embed_token = $1
 	`, token)
 	return scanEmbedHealthConfig(row)
@@ -614,15 +628,23 @@ func (r *Repository) GetEmbedHealthConfigByToken(ctx context.Context, token stri
 func (r *Repository) SaveEmbedHealthConfig(ctx context.Context, userID string, adminAccountID string, config EmbedHealthConfig) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO connection_health_embed_configs
-			(user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,now(),now())
+			(user_id, admin_account_id, embed_token, enabled, allowed_origin, refresh_interval_seconds,
+			 custom_check_enabled, custom_base_url, custom_api_key_ciphertext, custom_model, custom_provider_family,
+			 created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now(),now())
 		ON CONFLICT (user_id, admin_account_id) DO UPDATE SET
 			embed_token = EXCLUDED.embed_token,
 			enabled = EXCLUDED.enabled,
 			allowed_origin = EXCLUDED.allowed_origin,
 			refresh_interval_seconds = EXCLUDED.refresh_interval_seconds,
+			custom_check_enabled = EXCLUDED.custom_check_enabled,
+			custom_base_url = EXCLUDED.custom_base_url,
+			custom_api_key_ciphertext = EXCLUDED.custom_api_key_ciphertext,
+			custom_model = EXCLUDED.custom_model,
+			custom_provider_family = EXCLUDED.custom_provider_family,
 			updated_at = now()
-	`, userID, adminAccountID, config.EmbedToken, config.Enabled, config.AllowedOrigin, config.RefreshIntervalSeconds)
+	`, userID, adminAccountID, config.EmbedToken, config.Enabled, config.AllowedOrigin, config.RefreshIntervalSeconds,
+		config.CustomCheckEnabled, config.CustomBaseURL, config.CustomAPIKeyCiphertext, config.CustomModel, config.CustomProviderFamily)
 	return err
 }
 
@@ -636,12 +658,15 @@ func (r *Repository) RotateEmbedHealthToken(ctx context.Context, userID string, 
 
 func scanEmbedHealthConfig(row pgx.Row) (*EmbedHealthConfig, error) {
 	var config EmbedHealthConfig
-	if err := row.Scan(&config.UserID, &config.AdminAccountID, &config.EmbedToken, &config.Enabled, &config.AllowedOrigin, &config.RefreshIntervalSeconds, &config.CreatedAt, &config.UpdatedAt); err != nil {
+	if err := row.Scan(&config.UserID, &config.AdminAccountID, &config.EmbedToken, &config.Enabled, &config.AllowedOrigin, &config.RefreshIntervalSeconds,
+		&config.CustomCheckEnabled, &config.CustomBaseURL, &config.CustomAPIKeyCiphertext, &config.CustomModel, &config.CustomProviderFamily,
+		&config.CreatedAt, &config.UpdatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
 		return nil, err
 	}
+	config.CustomAPIKeyConfigured = config.CustomAPIKeyCiphertext != ""
 	return &config, nil
 }
 

@@ -181,6 +181,11 @@ export const updateConnectionHealthEmbedConfig = async (input: {
   enabled?: boolean
   allowedOrigin: string
   refreshIntervalSeconds: number
+  customCheckEnabled?: boolean
+  customBaseUrl?: string
+  customApiKey?: string
+  customModel?: string
+  customProviderFamily?: string
 }): Promise<ConnectionHealthEmbedConfig> =>
   requestJson<ConnectionHealthEmbedConfig>('/connection-health/embed-config', {
     method: 'PUT',

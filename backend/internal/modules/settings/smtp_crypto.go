@@ -77,3 +77,14 @@ func decryptSMTPPassword(gcm cipher.AEAD, userID, adminAccountID, stored string)
 	}
 	return string(plaintext), nil
 }
+
+// EncryptSecret/DecryptSecret expose the same AES-GCM envelope used by SMTP for
+// other workspace-scoped secrets. Callers must keep the returned plaintext in
+// memory only and must never include it in logs or API responses.
+func EncryptSecret(gcm cipher.AEAD, userID, adminAccountID, plaintext string) (string, error) {
+	return encryptSMTPPassword(gcm, userID, adminAccountID, plaintext)
+}
+
+func DecryptSecret(gcm cipher.AEAD, userID, adminAccountID, stored string) (string, error) {
+	return decryptSMTPPassword(gcm, userID, adminAccountID, stored)
+}

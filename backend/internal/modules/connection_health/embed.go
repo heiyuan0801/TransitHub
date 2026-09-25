@@ -381,6 +381,16 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 	for i := range logs {
 		refreshEmbedLogQuality(&logs[i])
 	}
+	// 历史预览只保留最近 6 次成功结果，避免公开嵌入接口一次性传输过多 HTML；
+	// 日志本身仍返回全部最近记录的时间、状态和耗时。
+	previewCount := 0
+	for i := range logs {
+		if !logs[i].Healthy || strings.TrimSpace(logs[i].PreviewHTML) == "" || previewCount >= 6 {
+			logs[i].PreviewHTML = ""
+			continue
+		}
+		previewCount++
+	}
 	if config.CustomCheckEnabled && strings.TrimSpace(config.CustomModel) != "" {
 		if len(logs) > 0 {
 			models = append(models, embedModelFromLog(logs[0]))
@@ -390,10 +400,6 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 				State: StateObserving, ErrorKey: "not_probed", QualityStatus: "unknown",
 			})
 		}
-	}
-	// HTML 预览只放在模型卡片中，日志列表只传元数据，避免每次刷新重复传输多份大文档。
-	for i := range logs {
-		logs[i].PreviewHTML = ""
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].GroupName != models[j].GroupName {

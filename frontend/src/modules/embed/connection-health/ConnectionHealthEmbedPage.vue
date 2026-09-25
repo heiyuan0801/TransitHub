@@ -29,6 +29,7 @@ type LogEntry = {
   qualityStatus?: string
   qualityScore?: number
   qualityReason?: string
+  previewHtml?: string
   probedAt: string
 }
 type Response = { generatedAt: string; refreshIntervalSeconds: number; models: Model[]; logs?: LogEntry[] }
@@ -46,6 +47,7 @@ const token = computed(() => {
 })
 const orderedModels = computed(() => data.value.models)
 const logs = computed(() => data.value.logs ?? [])
+const previewLogs = computed(() => logs.value.filter((entry) => entry.healthy && Boolean(entry.previewHtml)))
 const healthyCount = computed(() => orderedModels.value.filter((model) => model.state === 'healthy').length)
 const notDegradedCount = computed(() => orderedModels.value.filter((model) => model.qualityStatus === 'not_degraded').length)
 const degradedCount = computed(() => orderedModels.value.filter((model) => model.qualityStatus === 'degraded').length)
@@ -157,6 +159,16 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
           </div>
           <div class="pointer-events-none absolute inset-x-4 bottom-4 translate-y-2 rounded-xl bg-[#213b35] px-3 py-2 text-xs leading-5 text-white opacity-0 shadow-xl transition duration-200 group-hover:translate-y-0 group-hover:opacity-100">{{ model.qualityReason || '暂无判定原因' }} · {{ formatTime(model.lastProbeAt) }}</div>
         </article>
+      </section>
+
+      <section v-if="previewLogs.length" class="mt-7">
+        <div class="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h2 class="font-semibold text-[#31584b]">历史生成结果</h2><p class="mt-1 text-xs text-[#8aa095]">展示最近成功检测返回的 HTML，均在隔离窗口中运行。</p></div><span class="text-xs text-[#8aa095]">{{ previewLogs.length }} 个结果</span></div>
+        <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <article v-for="entry in previewLogs" :key="`preview:${entry.id}`" class="overflow-hidden rounded-3xl border border-[#d9e4d7] bg-white shadow-sm">
+            <div class="bg-[#dfe8dc] p-2"><div class="overflow-hidden rounded-2xl border border-[#cbd9c9] bg-white"><iframe class="h-44 w-full bg-white sm:h-48" :srcdoc="entry.previewHtml" :title="`${entry.modelName} HTML 生成结果`" sandbox="allow-scripts" referrerpolicy="no-referrer" /></div></div>
+            <div class="flex items-center justify-between gap-2 px-4 py-3 text-xs"><div class="min-w-0"><p class="truncate font-medium text-[#31584b]">{{ entry.modelName }} · <span :class="logClass(entry)">{{ entry.qualityStatus === 'not_degraded' ? '不降智' : entry.qualityStatus === 'degraded' ? '降智' : logLabel(entry) }}</span></p><p class="mt-1 truncate text-[#8aa095]">{{ formatTime(entry.probedAt) }}</p></div><span class="shrink-0 text-[#789088]">{{ formatDuration(entry.latencyMs) }}</span></div>
+          </article>
+        </div>
       </section>
 
       <section v-if="logs.length" class="mt-7 overflow-hidden rounded-3xl border border-[#d9e4d7] bg-white/80 shadow-sm">

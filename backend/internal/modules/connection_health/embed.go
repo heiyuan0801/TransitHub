@@ -277,6 +277,16 @@ func embedModelFromLog(logEntry EmbedHealthLog) EmbedHealthModel {
 	}
 }
 
+func refreshEmbedLogQuality(logEntry *EmbedHealthLog) {
+	if logEntry == nil || !logEntry.Healthy || strings.TrimSpace(logEntry.PreviewHTML) == "" {
+		return
+	}
+	status, score, reason := classifyModelContentQuality(logEntry.PreviewHTML)
+	logEntry.QualityStatus = status
+	logEntry.QualityScore = score
+	logEntry.QualityReason = reason
+}
+
 func (s *Service) testEmbedConfig(ctx context.Context, config EmbedHealthConfig) (EmbedHealthTestResult, error) {
 	if !config.CustomCheckEnabled || !config.CustomAPIKeyConfigured ||
 		strings.TrimSpace(config.CustomBaseURL) == "" || strings.TrimSpace(config.CustomModel) == "" {
@@ -367,6 +377,9 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 	logs, err := repo.ListEmbedHealthLogs(ctx, config.UserID, config.AdminAccountID, 20)
 	if err != nil {
 		return EmbedHealthResponse{}, err
+	}
+	for i := range logs {
+		refreshEmbedLogQuality(&logs[i])
 	}
 	if config.CustomCheckEnabled && strings.TrimSpace(config.CustomModel) != "" {
 		if len(logs) > 0 {

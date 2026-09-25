@@ -283,9 +283,14 @@ func classifyModelQuality(prompt string, body []byte) (string, int, string) {
 	}
 
 	content := extractProbeContent(body)
-	if content == "" {
+	return classifyModelContentQuality(content)
+}
+
+func classifyModelContentQuality(content string) (string, int, string) {
+	if strings.TrimSpace(content) == "" {
 		return "degraded", 0, "响应缺少可读取的模型内容"
 	}
+	content = strings.TrimSpace(content)
 	lower := strings.ToLower(content)
 	if strings.Contains(content, "```") {
 		return "degraded", 35, "返回了 Markdown 代码围栏"

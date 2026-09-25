@@ -266,9 +266,14 @@ func (s *Service) GetEmbedHealth(ctx context.Context, token string) (EmbedHealth
 			customState = StateHealthy
 		}
 		probedAt := time.Now()
+		var firstByteLatencyMs *int
+		if outcome.FirstByteLatencyMs > 0 {
+			firstByteLatencyMs = intPtr(outcome.FirstByteLatencyMs)
+		}
 		models = append(models, EmbedHealthModel{
 			ConnectionID: "custom", GroupName: "custom", ModelName: config.CustomModel, State: customState,
-			LatencyMs: intPtr(outcome.LatencyMs), LastProbeAt: &probedAt, ErrorKey: string(outcome.Result), QualityStatus: outcome.QualityStatus,
+			FirstByteLatencyMs: firstByteLatencyMs,
+			LatencyMs:          intPtr(outcome.LatencyMs), LastProbeAt: &probedAt, ErrorKey: string(outcome.Result), QualityStatus: outcome.QualityStatus,
 			QualityScore: outcome.QualityScore, QualityReason: outcome.QualityReason,
 		})
 	}

@@ -3,6 +3,7 @@ package connection_health
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -192,6 +193,51 @@ func TestProbe_KeyNeverLeaksIntoDetail(t *testing.T) {
 	})
 	if strings.Contains(outcome.Detail, secret) {
 		t.Fatalf("upstream key leaked into probe outcome detail: %s", outcome.Detail)
+	}
+}
+
+func TestProbe_StreamsLongGenerationAndRecordsFirstByteAndTotalLatency(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if stream, ok := body["stream"].(bool); !ok || !stream {
+			t.Fatalf("expected stream=true, got %#v", body["stream"])
+		}
+		if got := r.Header.Get("Accept"); got != "text/event-stream" {
+			t.Fatalf("expected SSE accept header, got %q", got)
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Fatal("test server does not support flushing")
+		}
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"<!doctype html><svg>\"}}]}\n\n")
+		flusher.Flush()
+		time.Sleep(35 * time.Millisecond)
+		_, _ = io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"<style>@keyframes ride{} </style></svg>\"}}]}\n\ndata: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	runner := NewRealProbeRunner()
+	outcome := runner.Probe(context.Background(), ProbeRequest{
+		BaseURL: server.URL, UpstreamKey: "stream-key", ProviderFamily: ProviderOpenAI,
+		ModelName: "gpt-test", ProbePrompt: "请生成 HTML SVG 动画", MaxTokens: 512,
+	})
+	if outcome.Result != ResultOK {
+		t.Fatalf("expected streamed probe to succeed, got %s (%s)", outcome.Result, outcome.Detail)
+	}
+	if outcome.FirstByteLatencyMs <= 0 {
+		t.Fatalf("expected first-byte latency, got %d", outcome.FirstByteLatencyMs)
+	}
+	if outcome.LatencyMs <= outcome.FirstByteLatencyMs {
+		t.Fatalf("expected total latency %d to exceed first-byte latency %d", outcome.LatencyMs, outcome.FirstByteLatencyMs)
+	}
+	if outcome.QualityStatus != "not_degraded" {
+		t.Fatalf("expected streamed content to be classified as not_degraded, got %s (%s)", outcome.QualityStatus, outcome.QualityReason)
 	}
 }
 

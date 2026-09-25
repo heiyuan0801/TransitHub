@@ -8,6 +8,7 @@ type Model = {
   groupName: string
   modelName: string
   state: string
+  firstByteLatencyMs?: number | null
   latencyMs?: number | null
   lastProbeAt?: string | null
   errorKey?: string
@@ -35,7 +36,7 @@ const degradedCount = computed(() => orderedModels.value.filter((model) => model
 const stateLabel = (state: string) => ({ healthy: '正常', degraded: '降级', suspended: '暂停', observing: '观察中', recovering: '恢复中', disabled: '已禁用' }[state] ?? state)
 const stateClass = (state: string) => state === 'healthy' ? 'text-emerald-700' : state === 'degraded' || state === 'observing' || state === 'recovering' ? 'text-amber-700' : 'text-rose-700'
 const errorReason = (errorKey?: string) => ({
-  network_fluctuation: '网络波动或请求超时（单次请求上限 10 秒）',
+  network_fluctuation: '网络波动或请求超时（单次请求上限 2 分钟）',
   rate_limited: '上游触发限流，请稍后重试',
   server_error: '上游服务异常',
   auth: 'API Key 无效、过期或没有权限',
@@ -45,6 +46,12 @@ const errorReason = (errorKey?: string) => ({
 }[errorKey ?? ''] ?? '')
 const qualityLabel = (status?: string, state?: string) => status === 'not_degraded' ? '不降智' : status === 'degraded' ? '降智' : state && state !== 'healthy' ? stateLabel(state) : '待判断'
 const qualityClass = (status?: string, state?: string) => status === 'not_degraded' ? 'bg-emerald-700 text-white' : status === 'degraded' ? 'bg-rose-700 text-white' : state && state !== 'healthy' ? 'bg-amber-700 text-white' : 'bg-slate-700 text-slate-200'
+const formatDuration = (milliseconds?: number | null) => {
+  if (milliseconds == null) return '-'
+  if (milliseconds >= 60_000) return `${Math.floor(milliseconds / 60_000)}m ${Math.floor((milliseconds % 60_000) / 1000)}s`
+  if (milliseconds >= 1000) return `${(milliseconds / 1000).toFixed(1)}s`
+  return `${milliseconds}ms`
+}
 const formatTime = (value?: string | null) => value ? new Date(value).toLocaleString() : '暂无检测时间'
 const healthIcon = (state: string) => state === 'healthy' ? CheckCircle2 : XCircle
 
@@ -101,7 +108,7 @@ onUnmounted(() => { if (timer) window.clearInterval(timer) })
             <div class="mt-4 flex items-center gap-3"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-[#d2e5d5] text-[#2d7a5d]"><Activity class="h-5 w-5" /></span><div class="min-w-0"><h2 class="truncate pr-20 text-lg font-semibold text-[#213b35]">{{ model.modelName }}</h2><p class="truncate text-xs text-[#6d877b]">{{ model.groupName || '未命名分组' }}</p></div></div>
           </div>
           <div class="space-y-4 p-5">
-            <div class="flex items-center justify-between gap-3"><span class="flex items-center gap-2 text-sm font-medium" :class="stateClass(model.state)"><component :is="healthIcon(model.state)" class="h-4 w-4" />{{ stateLabel(model.state) }}</span><span v-if="model.latencyMs != null" class="flex items-center gap-1 text-sm text-[#789088]"><Clock3 class="h-4 w-4" />{{ model.latencyMs }} ms</span></div>
+            <div class="flex items-center justify-between gap-3"><span class="flex items-center gap-2 text-sm font-medium" :class="stateClass(model.state)"><component :is="healthIcon(model.state)" class="h-4 w-4" />{{ stateLabel(model.state) }}</span><span v-if="model.latencyMs != null" class="flex items-center gap-1 text-right text-xs text-[#789088]"><Clock3 class="h-4 w-4 shrink-0" /><span v-if="model.firstByteLatencyMs != null">首字 {{ formatDuration(model.firstByteLatencyMs) }} · 总耗时 {{ formatDuration(model.latencyMs) }}</span><span v-else>{{ formatDuration(model.latencyMs) }}</span></span></div>
             <div class="grid grid-cols-2 gap-2 rounded-xl bg-[#f2f6ef] p-3 text-xs"><div><p class="text-[#8aa095]">检测时间</p><p class="mt-1 truncate font-medium text-[#31584b]">{{ formatTime(model.lastProbeAt) }}</p></div><div><p class="text-[#8aa095]">质量分</p><p class="mt-1 font-medium text-[#31584b]">{{ model.qualityStatus === 'unknown' || !model.qualityStatus ? '-' : `${model.qualityScore ?? 0}/100` }}</p></div></div>
             <div class="flex items-start gap-2 text-xs leading-5" :class="model.errorKey && model.errorKey !== 'ok' ? 'text-[#a34a27]' : 'text-[#6d877b]'"><AlertTriangle v-if="model.errorKey && model.errorKey !== 'ok'" class="mt-0.5 h-4 w-4 shrink-0 text-[#b23a4c]" /><CheckCircle2 v-else class="mt-0.5 h-4 w-4 shrink-0 text-[#27815d]" /><span>{{ model.qualityReason || errorReason(model.errorKey) || '尚未进行质量判定' }}</span></div>
           </div>

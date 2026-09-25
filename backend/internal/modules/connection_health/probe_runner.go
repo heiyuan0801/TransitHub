@@ -1,6 +1,7 @@
 package connection_health
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,8 +13,9 @@ import (
 	"time"
 )
 
-// ProbeTimeout 是单次真实探活请求的超时时间，任务书要求默认 10s。
-const ProbeTimeout = 10 * time.Second
+// ProbeTimeout 是单次真实探活请求的总超时时间。模型检测使用 SSE 流式响应，
+// 代码生成模型可能需要超过一分钟才完成，因此不能用短连接超时误判为降级。
+const ProbeTimeout = 2 * time.Minute
 
 const defaultProbePrompt = `请生成可直接运行的单文件HTML，使用内联SVG绘制鹈鹕骑自行车的二维循环动画。画面以鹈鹕和自行车为主体，展示清晰的身体结构、踩踏动作和车轮转动，配合协调的背景、配色与层次。动画应流畅自然、衔接连续，并适配不同屏幕尺寸。禁止依赖外部资源，只输出完整HTML，不要代码围栏或解释文字。`
 const defaultProbeMaxTokens = 512
@@ -29,8 +31,8 @@ type ProbeRequest struct {
 	ProbePrompt    string
 }
 
-// RealProbeRunner 按 provider family 构造最小请求，对上游 AI 端点发起一次性轻量调用。
-// 不经过任何现有请求转发路径，独立的 http.Client，超时 10s。
+// RealProbeRunner 按 provider family 构造最小请求，对上游 AI 端点发起一次流式轻量调用。
+// 不经过任何现有请求转发路径，独立的 http.Client，总超时 ProbeTimeout。
 type RealProbeRunner struct {
 	client *http.Client
 }
@@ -58,14 +60,19 @@ func (r *RealProbeRunner) Probe(ctx context.Context, req ProbeRequest) ProbeOutc
 
 	started := time.Now()
 	resp, err := r.client.Do(httpReq)
-	latencyMs := int(time.Since(started).Milliseconds())
 	if err != nil {
+		latencyMs := int(time.Since(started).Milliseconds())
 		return ProbeOutcome{Result: classifyTransportError(err), LatencyMs: latencyMs, Detail: redact(err.Error(), req.UpstreamKey)}
 	}
 	defer resp.Body.Close()
 
+	if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return classifyStreamingResponse(resp, req.UpstreamKey, started, prompt)
+	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
-	return classifyHTTPResponse(resp.StatusCode, body, req.UpstreamKey, latencyMs, prompt)
+	latencyMs := int(time.Since(started).Milliseconds())
+	outcome := classifyHTTPResponse(resp.StatusCode, body, req.UpstreamKey, latencyMs, prompt)
+	return outcome
 }
 
 // buildProbeRequest 统一走 OpenAI 兼容的 /v1/chat/completions 网关端点。
@@ -90,10 +97,91 @@ func buildProbeRequest(ctx context.Context, req ProbeRequest, prompt string, max
 	payload := map[string]any{
 		"model":      model,
 		"max_tokens": maxTokens,
+		"stream":     true,
 		"messages":   []map[string]any{{"role": "user", "content": prompt}},
 	}
-	headers := map[string]string{"Authorization": "Bearer " + req.UpstreamKey}
+	headers := map[string]string{
+		"Authorization": "Bearer " + req.UpstreamKey,
+		"Accept":        "text/event-stream",
+		"Cache-Control": "no-cache",
+	}
 	return newJSONRequest(ctx, http.MethodPost, endpoint, payload, headers)
+}
+
+// classifyStreamingResponse 读取 OpenAI-compatible SSE 响应。首字节时间用于区分
+// “上游完全没有响应”和“已经开始生成但代码较长”，LatencyMs 始终表示完整响应耗时。
+func classifyStreamingResponse(resp *http.Response, upstreamKey string, started time.Time, prompt string) ProbeOutcome {
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 64*1024), 2*1024*1024)
+	firstByteMs := 0
+	var content strings.Builder
+	var detail strings.Builder
+
+	for scanner.Scan() {
+		if firstByteMs == 0 {
+			firstByteMs = int(time.Since(started).Milliseconds())
+			if firstByteMs == 0 {
+				firstByteMs = 1
+			}
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ":") {
+			continue
+		}
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+			Error any `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) > 0 {
+			part := chunk.Choices[0].Delta.Content
+			if part == "" {
+				part = chunk.Choices[0].Message.Content
+			}
+			content.WriteString(part)
+		}
+		if chunk.Error != nil {
+			detail.WriteString(truncate(data, 500))
+		}
+	}
+
+	latencyMs := int(time.Since(started).Milliseconds())
+	if err := scanner.Err(); err != nil {
+		return ProbeOutcome{Result: classifyTransportError(err), FirstByteLatencyMs: firstByteMs, LatencyMs: latencyMs, Detail: redact(truncate(err.Error(), 500), upstreamKey)}
+	}
+	if detail.Len() > 0 {
+		return ProbeOutcome{Result: ResultInvalidResponse, FirstByteLatencyMs: firstByteMs, LatencyMs: latencyMs, Detail: redact(detail.String(), upstreamKey)}
+	}
+
+	body := []byte(`{"choices":[{"message":{"content":` + mustJSONString(content.String()) + `}}]}`)
+	outcome := classifyHTTPResponse(resp.StatusCode, body, upstreamKey, latencyMs, prompt)
+	outcome.FirstByteLatencyMs = firstByteMs
+	return outcome
+}
+
+func mustJSONString(value string) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return `""`
+	}
+	return string(encoded)
 }
 
 func defaultModelForProvider(providerFamily string) string {

@@ -64,16 +64,17 @@ type EmbedHealthConfigInput struct {
 }
 
 type EmbedHealthModel struct {
-	ConnectionID  string     `json:"connectionId"`
-	GroupName     string     `json:"groupName"`
-	ModelName     string     `json:"modelName"`
-	State         State      `json:"state"`
-	LatencyMs     *int       `json:"latencyMs,omitempty"`
-	LastProbeAt   *time.Time `json:"lastProbeAt,omitempty"`
-	ErrorKey      string     `json:"errorKey,omitempty"`
-	QualityStatus string     `json:"qualityStatus"`
-	QualityScore  int        `json:"qualityScore"`
-	QualityReason string     `json:"qualityReason,omitempty"`
+	ConnectionID       string     `json:"connectionId"`
+	GroupName          string     `json:"groupName"`
+	ModelName          string     `json:"modelName"`
+	State              State      `json:"state"`
+	FirstByteLatencyMs *int       `json:"firstByteLatencyMs,omitempty"`
+	LatencyMs          *int       `json:"latencyMs,omitempty"`
+	LastProbeAt        *time.Time `json:"lastProbeAt,omitempty"`
+	ErrorKey           string     `json:"errorKey,omitempty"`
+	QualityStatus      string     `json:"qualityStatus"`
+	QualityScore       int        `json:"qualityScore"`
+	QualityReason      string     `json:"qualityReason,omitempty"`
 }
 
 type EmbedHealthResponse struct {
@@ -308,12 +309,13 @@ type ConnectionHealthEvent struct {
 
 // ProbeOutcome 是一次真实探活的结果，供状态机和事件记录消费。
 type ProbeOutcome struct {
-	Result        ResultKey
-	LatencyMs     int
-	Detail        string
-	QualityStatus string
-	QualityScore  int
-	QualityReason string
+	Result             ResultKey
+	FirstByteLatencyMs int
+	LatencyMs          int
+	Detail             string
+	QualityStatus      string
+	QualityScore       int
+	QualityReason      string
 }
 
 // MySitesReader 是 connection_health 对 my_sites 模块的全部只读依赖，

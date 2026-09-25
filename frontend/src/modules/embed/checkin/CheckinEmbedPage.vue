@@ -4,15 +4,12 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
   AlertCircle,
-  Award,
   CalendarCheck2,
   Check,
-  Coins,
   Flame,
   Gift,
   Loader2,
   RefreshCw,
-  Trophy,
 } from 'lucide-vue-next'
 import type { CheckinEmbedStatus } from '@/modules/checkin/types'
 import { claimCheckin, createCheckinSession, getCheckinStatus } from './api'
@@ -25,7 +22,6 @@ const errorKey = ref('')
 const actionErrorKey = ref('')
 const claiming = ref(false)
 const refreshing = ref(false)
-const justClaimed = ref(false)
 
 const queryString = (value: unknown): string => Array.isArray(value)
   ? (typeof value[0] === 'string' ? value[0] : '')
@@ -42,11 +38,6 @@ const stripTokenFromUrl = () => {
   const query = params.toString()
   window.history.replaceState(window.history.state, '', query ? `${window.location.pathname}?${query}` : window.location.pathname)
 }
-
-const money = (value: number): string => new Intl.NumberFormat(locale.value, {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 6,
-}).format(value)
 
 const nextMilestone = computed(() => status.value?.milestones.find((item) => item.days > (status.value?.currentStreak ?? 0)) ?? null)
 const canCheckIn = computed(() => Boolean(status.value?.enabled && !status.value?.checkedToday && !claiming.value))
@@ -95,7 +86,6 @@ const checkIn = async () => {
   actionErrorKey.value = ''
   try {
     await claimCheckin()
-    justClaimed.value = true
     await loadStatus()
   } catch (error) {
     const key = error instanceof Error ? error.message : 'embed.checkin.errors.request'
@@ -163,15 +153,12 @@ onMounted(async () => {
               <Gift v-else class="h-8 w-8" />
             </div>
             <h2 class="mt-5 text-xl font-semibold">{{ t(status.checkedToday ? 'embed.checkin.today.done' : 'embed.checkin.today.ready') }}</h2>
-            <p v-if="status.today" class="mt-2 text-sm text-muted-foreground">{{ t('embed.checkin.today.rewarded', { amount: money(status.today.totalReward) }) }}</p>
-            <p v-else class="mt-2 text-sm text-muted-foreground">{{ t('embed.checkin.today.range', { min: money(status.dailyMin), max: money(status.dailyMax) }) }}</p>
             <button type="button" class="mt-6 inline-flex h-11 min-w-40 items-center justify-center gap-2 rounded-md bg-primary px-5 text-sm font-semibold text-primary-foreground transition-transform active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-60" :disabled="!canCheckIn" @click="checkIn">
               <Loader2 v-if="claiming" class="h-4 w-4 animate-spin" />
               <Check v-else-if="status.checkedToday" class="h-4 w-4" />
               <CalendarCheck2 v-else class="h-4 w-4" />
               {{ t(status.checkedToday ? 'embed.checkin.actions.checked' : 'embed.checkin.actions.checkin') }}
             </button>
-            <p v-if="justClaimed && status.today?.milestoneReward" class="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-300">{{ t('embed.checkin.today.milestoneBonus', { amount: money(status.today.milestoneReward) }) }}</p>
           </div>
 
           <div class="grid content-center gap-6 border-t border-border/70 p-6 lg:border-t-0">
@@ -180,14 +167,14 @@ onMounted(async () => {
               <p class="mt-2 text-4xl font-semibold tabular-nums">{{ status.currentStreak }}<span class="ml-1 text-base font-normal text-muted-foreground">{{ t('embed.checkin.streak.days') }}</span></p>
             </div>
             <div v-if="nextMilestone" class="border-t border-border/70 pt-5">
-              <div class="flex items-center gap-2 text-sm font-medium"><Coins class="h-4 w-4 text-primary" />{{ t('embed.checkin.milestone.next') }}</div>
-              <p class="mt-2 text-sm text-muted-foreground">{{ t('embed.checkin.milestone.description', { days: nextMilestone.days, amount: money(nextMilestone.bonusAmount) }) }}</p>
+              <div class="flex items-center gap-2 text-sm font-medium"><Gift class="h-4 w-4 text-primary" />{{ t('embed.checkin.milestone.next') }}</div>
+              <p class="mt-2 text-sm text-muted-foreground">{{ t('embed.checkin.milestone.description', { days: nextMilestone.days }) }}</p>
             </div>
             <p v-else class="border-t border-border/70 pt-5 text-sm text-muted-foreground">{{ t('embed.checkin.milestone.completed') }}</p>
           </div>
         </section>
 
-        <section class="grid gap-px overflow-hidden rounded-md border border-border/70 bg-border/70 grid-cols-2 lg:grid-cols-4">
+        <section class="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border/70 bg-border/70">
           <div class="bg-surface-elevated p-4 sm:p-5">
             <p class="text-xs text-muted-foreground">{{ t('embed.checkin.stats.totalDays') }}</p>
             <p class="mt-2 text-2xl font-semibold tabular-nums">{{ status.totalDays }}</p>
@@ -195,14 +182,6 @@ onMounted(async () => {
           <div class="bg-surface-elevated p-4 sm:p-5">
             <p class="text-xs text-muted-foreground">{{ t('embed.checkin.stats.longestStreak') }}</p>
             <p class="mt-2 text-2xl font-semibold tabular-nums">{{ status.longestStreak }}</p>
-          </div>
-          <div class="bg-surface-elevated p-4 sm:p-5">
-            <p class="text-xs text-muted-foreground">{{ t('embed.checkin.stats.totalRewards') }}</p>
-            <p class="mt-2 text-2xl font-semibold tabular-nums">{{ money(status.totalRewards) }}</p>
-          </div>
-          <div class="bg-surface-elevated p-4 sm:p-5">
-            <p class="text-xs text-muted-foreground">{{ t('embed.checkin.stats.rank') }}</p>
-            <p class="mt-2 text-2xl font-semibold tabular-nums">{{ status.userRank ? `#${status.userRank}` : t('embed.checkin.stats.unranked') }}</p>
           </div>
         </section>
 
@@ -220,37 +199,10 @@ onMounted(async () => {
               :key="item.key"
               class="flex aspect-square min-w-0 flex-col items-center justify-center rounded-md border text-[10px] tabular-nums sm:text-xs"
               :class="item.record ? 'border-primary bg-primary text-primary-foreground' : item.isToday ? 'border-primary bg-primary/5 text-primary' : 'border-border/70 bg-surface text-muted-foreground'"
-              :title="item.record ? t('embed.checkin.calendar.checkedTitle', { date: item.key, amount: money(item.record.totalReward) }) : t('embed.checkin.calendar.emptyTitle', { date: item.key })"
+              :title="item.record ? t('embed.checkin.calendar.checkedTitle', { date: item.key }) : t('embed.checkin.calendar.emptyTitle', { date: item.key })"
             >
               <Check v-if="item.record" class="mb-0.5 h-3 w-3" />
               <span>{{ item.label }}</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="overflow-hidden rounded-md border border-border/70 bg-surface-elevated">
-          <div class="flex items-start justify-between gap-4 px-5 py-4">
-            <div>
-              <h2 class="flex items-center gap-2 font-semibold"><Trophy class="h-4 w-4 text-warning" />{{ t('embed.checkin.leaderboard.title') }}</h2>
-              <p class="mt-1 text-xs text-muted-foreground">{{ t('embed.checkin.leaderboard.description') }}</p>
-            </div>
-            <span class="shrink-0 text-xs text-muted-foreground">{{ t('embed.checkin.leaderboard.top') }}</span>
-          </div>
-          <div v-if="!status.leaderboard.length" class="border-t border-border/70 p-6 text-center text-sm text-muted-foreground">{{ t('embed.checkin.leaderboard.empty') }}</div>
-          <div v-else class="border-t border-border/70">
-            <div class="grid grid-cols-[2.5rem_minmax(0,1fr)_3.5rem_4rem] gap-2 bg-surface px-4 py-2 text-[11px] text-muted-foreground sm:grid-cols-[3rem_minmax(0,1fr)_6rem_6rem] sm:px-5">
-              <span>{{ t('embed.checkin.leaderboard.rank') }}</span><span>{{ t('embed.checkin.leaderboard.user') }}</span><span class="text-right">{{ t('embed.checkin.leaderboard.days') }}</span><span class="text-right">{{ t('embed.checkin.leaderboard.streak') }}</span>
-            </div>
-            <div
-              v-for="entry in status.leaderboard"
-              :key="`${entry.rank}-${entry.maskedEmail}`"
-              class="grid grid-cols-[2.5rem_minmax(0,1fr)_3.5rem_4rem] items-center gap-2 border-t border-border/60 px-4 py-3 text-sm sm:grid-cols-[3rem_minmax(0,1fr)_6rem_6rem] sm:px-5"
-              :class="entry.isCurrentUser ? 'bg-primary/5' : ''"
-            >
-              <span class="flex items-center gap-1 font-semibold tabular-nums" :class="entry.rank <= 3 ? 'text-primary' : 'text-muted-foreground'"><Award v-if="entry.rank <= 3" class="h-3.5 w-3.5" />{{ entry.rank }}</span>
-              <span class="min-w-0 truncate font-medium">{{ entry.maskedEmail || t('embed.checkin.leaderboard.anonymous') }}<span v-if="entry.isCurrentUser" class="ml-2 text-xs text-primary">{{ t('embed.checkin.leaderboard.me') }}</span></span>
-              <span class="text-right tabular-nums">{{ entry.totalDays }}</span>
-              <span class="text-right tabular-nums">{{ entry.currentStreak }}</span>
             </div>
           </div>
         </section>
@@ -259,9 +211,8 @@ onMounted(async () => {
           <div class="flex items-center justify-between px-5 py-4"><h2 class="font-semibold">{{ t('embed.checkin.history.title') }}</h2><span class="text-xs text-muted-foreground">{{ t('embed.checkin.history.count', { count: recentHistory.length }) }}</span></div>
           <div v-if="!recentHistory.length" class="border-t border-border/70 p-6 text-center text-sm text-muted-foreground">{{ t('embed.checkin.history.empty') }}</div>
           <div v-else class="grid border-t border-border/70 sm:grid-cols-2">
-            <div v-for="record in recentHistory" :key="record.id" class="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-4 odd:sm:border-r">
+            <div v-for="record in recentHistory" :key="record.id" class="border-b border-border/60 px-5 py-4 odd:sm:border-r">
               <div><p class="font-medium tabular-nums">{{ record.checkinDate }}</p><p class="mt-1 text-xs text-muted-foreground">{{ t('embed.checkin.history.streak', { count: record.streakDays }) }}</p></div>
-              <div class="text-right"><p class="font-semibold tabular-nums text-primary">+{{ money(record.totalReward) }}</p><p v-if="record.milestoneReward" class="mt-1 text-xs text-muted-foreground">{{ t('embed.checkin.history.includesBonus') }}</p></div>
             </div>
           </div>
         </section>
